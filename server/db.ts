@@ -1,4 +1,4 @@
-// SQLite (eine Datei, WAL): Konten, Sitzungen, E-Mail-Links, Profile der Arena, Twitch-Mods, Bot-Zugang, Chat.
+// SQLite (eine Datei, WAL): Konten, Sitzungen, E-Mail-Links, Profile der Arena, Twitch-Mods, Bot-Zugang, Chat, letzte Runden.
 import Database from 'better-sqlite3';
 import { createHash, randomBytes } from 'node:crypto';
 
@@ -77,6 +77,22 @@ export function openDb(path: string): DB {
       deleted INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS chat_ts ON chat(ts);
+    -- letzte Runden je Nutzer (aus den Änderungen am Spielstand, je Runde der Arena eine Zeile)
+    CREATE TABLE IF NOT EXISTS history (
+      user_key TEXT NOT NULL,
+      round INTEGER NOT NULL,
+      at INTEGER NOT NULL,
+      art TEXT NOT NULL,
+      art_name TEXT NOT NULL,
+      track TEXT,
+      rank INTEGER,
+      of INTEGER,
+      ds INTEGER NOT NULL DEFAULT 0,
+      dxp INTEGER NOT NULL DEFAULT 0,
+      raced INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_key, round)
+    );
+    CREATE INDEX IF NOT EXISTS history_at ON history(user_key, at);
   `);
   return db;
 }
@@ -93,10 +109,11 @@ export function kvSet(db: DB, k: string, v: unknown): void {
   db.prepare('INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v').run(k, JSON.stringify(v));
 }
 
-// Aufräumen: abgelaufene Sitzungen und Links, Chat älter als 30 Tage
+// Aufräumen: abgelaufene Sitzungen und Links, Chat älter als 30 Tage, letzte Runden älter als 90 Tage
 export function housekeeping(db: DB): void {
   const t = now();
   db.prepare('DELETE FROM sessions WHERE expires < ?').run(t);
   db.prepare('DELETE FROM magic WHERE expires < ?').run(t - 86400e3);
   db.prepare('DELETE FROM chat WHERE ts < ?').run(t - 30 * 86400e3);
+  db.prepare('DELETE FROM history WHERE at < ?').run(t - 90 * 86400e3);
 }

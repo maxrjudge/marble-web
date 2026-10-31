@@ -312,3 +312,87 @@ test('Admin nur mit Passwort; Konto löschen', async () => {
   assert.equal((await s.f('/api/account/delete', { method: 'POST', json: {} })).status, 200);
   assert.equal((await (await s.f('/api/me')).json()).user, null);
 });
+
+// ---------- Etappe 2 ----------
+const baseState = (o: Record<string, unknown> = {}) => ({
+  v: 1, round: 100, phase: 'start', art: 'murmel', artName: 'Murmeln', next: 'murmel', nextName: 'Murmeln', label: 'Anmeldung', track: 'Winterpiste', ort: 'winter', wetter: 'schnee',
+  lobbyOpen: true, lobbyMs: 3000, startMs: null, endMs: null, raceT: 0, duration: 0, lobby: { n: 0, max: 16, users: [], names: [] }, field: [], starters: 0,
+  bets: { pool: 0, count: 0, open: true }, bananas: { n: 0, max: 6 }, ranking: null, result: null, payouts: null, eingriffe: null,
+  lotto: { open: true, jackpot: 1000, tipps: 0, info: '', letzte: null }, rad: { open: true, info: '', letzte: null }, schieber: { open: true, info: '', feld: 0 },
+  plan: [], week: { key: '2026-W44', top: [], finale: 'So 20:00', inMin: 100 }, lang: 'de', ...o,
+});
+
+test('Runde: Zustand der Arena geht an alle Browser, neue bekommen ihn beim Verbinden, ohne Arena keiner', async () => {
+  const arena = wsClient(undefined, `/arena?token=${TOKEN}`);
+  await arena.opened;
+  const v = wsClient();
+  await v.opened;
+  await v.waitFor((m) => m.t === 'hello');
+  arena.ws.send(JSON.stringify({ type: 'state', s: baseState({ round: 101 }) }));
+  const st = (await v.waitFor((m) => m.t === 'state')) as { s: { round: number } };
+  assert.equal(st.s.round, 101);
+  arena.ws.send(JSON.stringify({ type: 'state', s: { v: 2, round: 5 } }));
+  await sleep(150);
+  assert.ok(!v.got.some((m) => m.t === 'state' && (m.s as { round: number }).round === 5), 'fremdes Format nicht weiter');
+  const late = wsClient();
+  await late.opened;
+  const h = (await late.waitFor((m) => m.t === 'hello')) as { state: { round: number } };
+  assert.equal(h.state.round, 101);
+  arena.ws.close();
+  await v.waitFor((m) => m.t === 'state' && m.s === null);
+  v.ws.close();
+  late.ws.close();
+});
+
+test('Knöpfe: Befehle haben eine eigene Bremse (mehrere schnell hintereinander gehen)', async () => {
+  const s = await mailLogin('knopf@beispiel.at', 'Knopf');
+  const arena = wsClient(undefined, `/arena?token=${TOKEN}`);
+  await arena.opened;
+  const a = wsClient(s.jar);
+  await a.opened;
+  await a.waitFor((m) => m.t === 'hello');
+  for (const c of ['!join', '!perk gummi', '!wette Lisi 50', '!banane 4']) a.ws.send(JSON.stringify({ t: 'say', text: c }));
+  for (let i = 0; i < 100 && arena.got.filter((m) => m.type === 'chat').length < 4; i++) await sleep(20);
+  assert.equal(arena.got.filter((m) => m.type === 'chat').length, 4, 'vier Befehle sofort');
+  assert.ok(!a.got.some((m) => m.t === 'err'));
+  for (let i = 0; i < 6; i++) a.ws.send(JSON.stringify({ t: 'say', text: '!daily' }));
+  await a.waitFor((m) => m.t === 'err' && m.code === 'slowcmd');
+  arena.ws.close();
+  a.ws.close();
+});
+
+test('Spielstand: Stufe, Titel, Wochenplatz, letzte Runden aus den Änderungen; Bestenliste', async () => {
+  const s = await mailLogin('runde@beispiel.at', 'Rundi');
+  const arena = wsClient(undefined, `/arena?token=${TOKEN}`);
+  await arena.opened;
+  const post = (body: unknown) => fetch(`${base}/arena-api/profiles?token=${TOKEN}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const { weekKey } = await import('../server/stats.ts');
+  const wk = weekKey();
+  const p0 = { user: 'web:rundi', name: 'Rundi', s: 200, xp: 0, races: 0, wins: 0, seconds: 0, podiums: 0, bananas: 0, slips: 0, respawns: 0, betWon: 0, updatedAt: 1 };
+  await post({ 'web:rundi': p0, hansi: { ...p0, user: 'hansi', name: 'Hansi', wins: 12, xp: 5000, races: 80, wk, wkPts: [10, 8, 1], updatedAt: 1 } });
+  // Runde 200: Rundi fährt mit und wird Zweiter
+  arena.ws.send(JSON.stringify({ type: 'state', s: baseState({ round: 200, phase: 'podium', starters: 9, result: [{ rank: 1, name: 'Hansi', user: 'hansi' }, { rank: 2, name: 'Rundi', user: 'web:rundi' }] }) }));
+  await sleep(100);
+  await post({ 'web:rundi': { ...p0, s: 270, xp: 90, races: 1, podiums: 1, wk, wkPts: [8], updatedAt: 2 } });
+  // Runde 201: nur eine Wette verloren
+  arena.ws.send(JSON.stringify({ type: 'state', s: baseState({ round: 201, art: 'rad', artName: 'Glücksrad', phase: 'rad' }) }));
+  await sleep(100);
+  await post({ 'web:rundi': { ...p0, s: 220, xp: 90, races: 1, podiums: 1, wk, wkPts: [8], updatedAt: 3 } });
+  const pr = await (await s.f('/api/profile')).json();
+  assert.equal(pr.level, 2);
+  assert.deepEqual([pr.xpFrom, pr.xpTo], [40, 160]);
+  assert.deepEqual(pr.week, { key: wk, place: 2, pts: 8, of: 2 });
+  assert.equal(pr.history.length, 2);
+  const [r201, r200] = pr.history;
+  assert.deepEqual([r200.round, r200.artName, r200.rank, r200.of, r200.ds, r200.raced], [200, 'Murmeln', 2, 9, 70, 1]);
+  assert.deepEqual([r201.round, r201.artName, r201.rank, r201.ds, r201.raced], [201, 'Glücksrad', null, -50, 0]);
+  const hansiTitles = (await import('../server/stats.ts')).titlesFor({ wins: 12, races: 80, champ: 2 } as never, false);
+  assert.deepEqual(hansiTitles, ['2× Wochenchampion', 'Legende', 'Stammgast']);
+  const b = await (await s.f('/api/board')).json();
+  assert.deepEqual(b.woche.map((r: { name: string; pts: number }) => [r.name, r.pts]), [['Hansi', 19], ['Rundi', 8]]);
+  assert.equal(b.woche[1].me, true);
+  assert.equal(b.siege[0].name, 'Hansi');
+  assert.equal(b.me.woche.place, 2);
+  assert.ok(!('key' in b.woche[0]), 'keine Schlüssel in der öffentlichen Liste');
+  arena.ws.close();
+});

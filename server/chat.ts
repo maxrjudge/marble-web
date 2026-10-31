@@ -27,18 +27,22 @@ export interface Hooks {
   bridgeOn: () => boolean;
 }
 
-const LIMITS = { len: 300, history: 60, perSecond: 1, burst: 5, burstWindow: 10_000 };
+// Chat: eine Zeile je Sekunde, 5 in 10 s. Befehle (Knöpfe) eigens: 8 in 10 s, damit Mitfahren, Wette und Banane
+// schnell hintereinander gehen
+const LIMITS = { len: 300, history: 60, perSecond: 1, burst: 5, burstWindow: 10_000, cmdBurst: 8 };
 const LINK = /(https?:\/\/|www\.)\S+/i;
 
 interface Client {
   ws: WebSocket;
   user: User | null;
   sent: number[]; // Zeitpunkte der letzten Nachrichten
+  cmds: number[]; // Zeitpunkte der letzten Befehle
 }
 
 export class ChatHub {
   private clients = new Set<Client>();
   private history: ChatLine[] = [];
+  state: () => unknown = () => null; // Zustand der Runde (von der Arena)
 
   constructor(
     private db: DB,
@@ -69,13 +73,14 @@ export class ChatHub {
   }
 
   attach(ws: WebSocket, user: User | null, arenaOnline: boolean): void {
-    const c: Client = { ws, user, sent: [] };
+    const c: Client = { ws, user, sent: [], cmds: [] };
     this.clients.add(c);
     this.send(c, {
       t: 'hello',
       me: user && user.age_ok ? { name: user.name, color: user.color, key: userKey(user), mod: this.isMod(user) } : null,
       history: this.history,
       arena: arenaOnline,
+      state: this.state(),
     });
     this.broadcast({ t: 'count', n: this.clients.size });
     ws.on('message', (raw) => {
@@ -141,17 +146,20 @@ export class ChatHub {
     const text = raw.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, LIMITS.len);
     if (!text) return;
     const t = now();
-    c.sent = c.sent.filter((x) => t - x < LIMITS.burstWindow);
     const mod = this.isMod(u);
-    if (!mod && (c.sent.length >= LIMITS.burst || (c.sent.length && t - c.sent[c.sent.length - 1] < 1000 / LIMITS.perSecond))) return this.send(c, { t: 'err', code: 'slow' });
-    c.sent.push(t);
     const key = userKey(u);
     if (text.startsWith('!')) {
-      // Befehl: nur an die Arena
+      // Befehl: nur an die Arena (eigene Bremse)
+      c.cmds = c.cmds.filter((x) => t - x < LIMITS.burstWindow);
+      if (!mod && c.cmds.length >= LIMITS.cmdBurst) return this.send(c, { t: 'err', code: 'slowcmd' });
+      c.cmds.push(t);
       const ok = this.hooks.toArena({ user: key, name: u.name, text, mod, color: u.color });
       if (!ok) this.send(c, { t: 'err', code: 'arena' });
       return;
     }
+    c.sent = c.sent.filter((x) => t - x < LIMITS.burstWindow);
+    if (!mod && (c.sent.length >= LIMITS.burst || (c.sent.length && t - c.sent[c.sent.length - 1] < 1000 / LIMITS.perSecond))) return this.send(c, { t: 'err', code: 'slow' });
+    c.sent.push(t);
     if (!mod && LINK.test(text)) return this.send(c, { t: 'err', code: 'link' });
     if (this.blocked(text)) return this.send(c, { t: 'err', code: 'filter' });
     this.add({ ts: t, src: 'web', key, name: u.name, color: u.color, text, mod });

@@ -2,6 +2,8 @@
 
 Die Seite **arena.maxr.at**: Livebild der Murmel-Arena aus LSM (Low-Latency-Embed, SLDP/Nimio), Chat mit Brücke zu Twitch in beide Richtungen, Anmeldung mit Twitch oder per E-Mail-Link (ohne Passwort), Spielstand und Konto. Die Arena hängt sich als zweiter Chat an: Befehle von der Seite (`!join`, `!wette` …) kommen in der Arena an, Ferdls Ansagen und die Antworten der Arena kommen zurück, die Spielstände liegen am Server.
 
+Dazu Mitspielen per Knopf (Mitfahren, Wetten, Banane, Lotto, Glücksrad, Münzschieber, Eingriffe), über dem Bild der Stand der Runde im Takt mit dem Livebild, Bestenliste (Woche und ewig) und im Konto Stufe, Titel und die letzten Runden.
+
 Twitch bleibt der Hauptkanal; die Seite ist ein zweiter Weg hinein. Die Oberfläche ist Deutsch/Englisch umschaltbar (ein Stream, ein Chat).
 
 ## Aufbau
@@ -16,7 +18,7 @@ Twitch bleibt der Hauptkanal; die Seite ist ein zweiter Weg hinein. Die Oberflä
 Wege am Server:
 
 - `/` die Seite, `/impressum.html`, `/datenschutz.html`, `/regeln.html`
-- `/api/…` Konto, Einstellungen, Spielstand, Datenauskunft, Löschen
+- `/api/…` Konto, Einstellungen, Spielstand mit Stufe, Titeln, Wochenplatz und letzten Runden (`/api/profile`), Bestenliste (`/api/board`), Datenauskunft, Löschen
 - `/auth/twitch`, `/auth/mail` Anmeldung (Twitch-OAuth bzw. Link per Mail, 15 Minuten gültig, einmal benutzbar)
 - `/ws` Chat der Seite (WebSocket, Sitzungs-Cookie)
 - `/arena` Anschluss der Arena (WebSocket mit `ARENA_TOKEN`, die neueste Arena gewinnt)
@@ -114,6 +116,16 @@ sudo chown -R marble-web:marble-web /var/lib/marble-web
 ```
 
 Mehrmaliges Ausführen schadet nicht: je Nutzer gewinnt der neuere Stand.
+
+## Mitspielen und Runde im Takt
+
+Die Arena meldet einmal je Sekunde ihren Zustand über `/arena` (Phase, Spielart, Strecke, Anmeldung und Start in ms, wer angemeldet ist, Starter mit Quoten, Rangliste im Rennen, Ergebnis, Lotto/Rad/Münzschieber, Spielplan, Woche). Der Server reicht ihn an alle Browser weiter; wer neu kommt, bekommt den letzten Stand gleich mit.
+
+- **Über dem Bild** zeigt die Seite Runde, Spielart, Strecke und im Rennen die ersten drei. Was das Bild betrifft, kommt so viel später, wie das LSM-Embed hinterher ist (`delay_ms`): die Seite hält die Meldungen zurück, bis das Bild so weit ist. Meldet das Embed nichts (oder spielt nicht), zeigt sie den neuesten Stand.
+- **Die Leiste darunter** läuft in echter Zeit: „Anmeldung schließt in 0:03“, „Start in 0:12“, „nächste Runde in 0:20“. Die Arena entscheidet, wann zu ist; zählt die Seite mit Verzögerung, kämen Klicks zu spät.
+- **Knöpfe** schicken normale Chat-Befehle (`!join`, `!perk gummi`, `!wette Pepi 50`, `!banane 4`, `!daily`, `!tipp quick`, `!tipp 3 12 17 25 33 41`, `!rad rot 50`, `!muenze 3 2`, `!kreisel angriff`, `!reparatur Name` …) über den Chat der Seite an die Arena. Sie erscheinen nicht im Chat; die Antwort der Arena kommt nur beim Absender an (als Meldung und unter den Knöpfen). Für Befehle gilt eine eigene Bremse: 8 in 10 Sekunden.
+- **Letzte Runden im Konto:** Der Server vergleicht jeden Spielstand, den die Arena schickt, mit dem vorigen und schreibt die Änderung der laufenden Runde zu (Schilling, Erfahrung, mitgefahren; den Platz aus dem Ergebnis, die ersten zehn). Eine Wette, die in der Siegerehrung für das nächste Rennen gesetzt wird, steht deshalb bei der Runde, in der sie gesetzt wurde. Aufbewahrt 90 Tage.
+- **Bestenliste:** Woche wie in der Arena (beste 20 Rennen, Montag bis Sonntag, Wiener Zeit), ewig nach Siegen und nach Erfahrung; gerechnet aus den Spielständen am Server, höchstens alle 20 Sekunden neu.
 
 ## Konten und Regeln
 

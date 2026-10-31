@@ -16,9 +16,10 @@ export function allProfiles(db: DB): Record<string, ProfileJson> {
   return out;
 }
 
-export function mergeProfiles(db: DB, incoming: unknown): number {
+// onChange: je übernommenem Profil alter und neuer Stand (für die letzten Runden)
+export function mergeProfiles(db: DB, incoming: unknown, onChange?: (key: string, old: ProfileJson | null, neu: ProfileJson) => void): number {
   if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) return 0;
-  const get = db.prepare('SELECT updated_at FROM profiles WHERE user_key = ?');
+  const get = db.prepare('SELECT updated_at, json FROM profiles WHERE user_key = ?');
   const put = db.prepare('INSERT INTO profiles (user_key, json, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_key) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at');
   let n = 0;
   db.transaction(() => {
@@ -27,9 +28,18 @@ export function mergeProfiles(db: DB, incoming: unknown): number {
       const json = JSON.stringify(p);
       if (json.length > 20000) continue;
       const at = Number((p as ProfileJson).updatedAt) || 0;
-      const mine = get.get(key) as { updated_at: number } | undefined;
+      const mine = get.get(key) as { updated_at: number; json: string } | undefined;
       if (mine && at < mine.updated_at) continue;
       put.run(key, json, at);
+      if (onChange) {
+        let old: ProfileJson | null = null;
+        try {
+          old = mine ? (JSON.parse(mine.json) as ProfileJson) : null;
+        } catch {
+          old = null;
+        }
+        onChange(key, old, p as ProfileJson);
+      }
       n++;
     }
   })();

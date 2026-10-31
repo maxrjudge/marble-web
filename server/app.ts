@@ -12,10 +12,11 @@ import { ChatHub, type ArenaChatMsg } from './chat.js';
 import { configProblems, type Config } from './config.js';
 import { housekeeping, kvGet, kvSet, now, openDb, userKey, type User } from './db.js';
 import { allProfiles, mergeProfiles, profileOf } from './profiles.js';
+import { boards, dropBoards, historyOf, levelFor, noteHistory, titlesFor, weekKey, xpForLevel, type RoundCtx } from './stats.js';
 import { loadBot, saveBot, TwitchIrc, type Fetch } from './twitch.js';
 import { adminPage } from './admin.js';
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 
 export interface AppOpts {
   mailer?: Transporter | null; // Tests: eigener Transport
@@ -125,7 +126,36 @@ export async function buildApp(c: Config, o: AppOpts = {}) {
   app.get('/api/profile', async (req, reply) => {
     const u = userFromRequest(db, req);
     if (!u) return reply.code(401).send({ error: 'login' });
-    return { key: userKey(u), profile: profileOf(db, userKey(u)) };
+    const key = userKey(u);
+    const p = profileOf(db, key);
+    const en = (req.query as Record<string, string>).lang === 'en';
+    if (!p) return { key, profile: null, history: [] };
+    const xp = Number(p.xp) || 0;
+    const level = levelFor(xp);
+    const b = boards(db);
+    const wi = b.woche.findIndex((r) => r.key === key);
+    return {
+      key,
+      profile: p,
+      level,
+      xpFrom: xpForLevel(level),
+      xpTo: xpForLevel(level + 1),
+      titles: titlesFor(p, en),
+      week: { key: b.week, place: wi >= 0 ? wi + 1 : null, pts: wi >= 0 ? b.woche[wi].pts : 0, of: b.woche.length },
+      history: historyOf(db, key),
+    };
+  });
+  // Bestenlisten: Woche (beste 20 Rennen), ewig nach Siegen und nach Erfahrung; dazu der eigene Platz
+  app.get('/api/board', async (req) => {
+    const b = boards(db);
+    const u = userFromRequest(db, req);
+    const key = u ? userKey(u) : null;
+    const place = (list: typeof b.woche) => {
+      const i = key ? list.findIndex((r) => r.key === key) : -1;
+      return i >= 0 ? { place: i + 1, row: list[i] } : null;
+    };
+    const top = (list: typeof b.woche) => list.slice(0, 50).map(({ key: k, ...r }) => ({ ...r, me: k === key }));
+    return { week: b.week, now: weekKey(), woche: top(b.woche), siege: top(b.siege), xp: top(b.xp), me: key ? { woche: place(b.woche), siege: place(b.siege), xp: place(b.xp) } : null };
   });
   app.get('/api/account/data', async (req, reply) => {
     const u = userFromRequest(db, req);
@@ -159,7 +189,12 @@ export async function buildApp(c: Config, o: AppOpts = {}) {
   });
   const arenaOk = (req: FastifyRequest) => c.arenaToken.length >= 16 && same(String((req.query as Record<string, string>).token ?? ''), c.arenaToken);
   app.get('/arena-api/profiles', async (req, reply) => (arenaOk(req) ? allProfiles(db) : reply.code(401).send({ error: 'token' })));
-  app.post('/arena-api/profiles', async (req, reply) => (arenaOk(req) ? { ok: true, taken: mergeProfiles(db, req.body) } : reply.code(401).send({ error: 'token' })));
+  app.post('/arena-api/profiles', async (req, reply) => {
+    if (!arenaOk(req)) return reply.code(401).send({ error: 'token' });
+    const taken = mergeProfiles(db, req.body, (k, old, neu) => noteHistory(db, k, old, neu, roundCtx()));
+    if (taken) dropBoards();
+    return { ok: true, taken };
+  });
 
   // --- Admin ---
   app.register(async (a) => {
@@ -212,6 +247,15 @@ export async function buildApp(c: Config, o: AppOpts = {}) {
     app.setNotFoundHandler((req, reply) => (req.method === 'GET' && !req.url.startsWith('/api') ? reply.sendFile('index.html') : reply.code(404).send({ error: 'not found' })));
   }
 
+  // --- Zustand der Runde (von der Arena, an alle Browser) ---
+  let roundState: Record<string, unknown> | null = null;
+  const roundCtx = (): RoundCtx | null => {
+    const r = roundState;
+    if (!r) return null;
+    return { round: Number(r.round) || 0, art: String(r.art ?? ''), artName: String(r.artName ?? ''), track: typeof r.track === 'string' ? r.track : null, result: Array.isArray(r.result) ? (r.result as RoundCtx['result']) : null, field: Number(r.starters) || 0 };
+  };
+  hub.state = () => roundState;
+
   // --- WebSockets ---
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   app.server.on('upgrade', (req, socket, head) => {
@@ -230,7 +274,7 @@ export async function buildApp(c: Config, o: AppOpts = {}) {
         hub.broadcast({ t: 'arena', on: true });
         log('Arena verbunden');
         ws.on('message', (raw) => {
-          let m: { type?: string; user?: string; kind?: string; text?: string; version?: string; who?: string };
+          let m: { type?: string; user?: string; kind?: string; text?: string; version?: string; who?: string; s?: unknown };
           try {
             m = JSON.parse(String(raw));
           } catch {
@@ -239,13 +283,19 @@ export async function buildApp(c: Config, o: AppOpts = {}) {
           if (m.type === 'hello') arenaVersion = String(m.version ?? '');
           else if (m.type === 'feedback' && m.user && m.text) hub.toKey(m.user, { t: 'fb', kind: m.kind ?? 'info', text: String(m.text).slice(0, 300) });
           else if ((m.type === 'ferdl' || m.type === 'sys') && m.text) hub.fromArena(m.type, String(m.text), m.who);
+          else if (m.type === 'state' && m.s && typeof m.s === 'object' && (m.s as { v?: number }).v === 1) {
+            roundState = m.s as Record<string, unknown>;
+            hub.broadcast({ t: 'state', s: roundState });
+          }
         });
         const ping = setInterval(() => ws.readyState === WebSocket.OPEN && ws.ping(), 20000);
         ws.on('close', () => {
           clearInterval(ping);
           if (arena === ws) {
             arena = null;
+            roundState = null;
             hub.broadcast({ t: 'arena', on: false });
+            hub.broadcast({ t: 'state', s: null });
             log('Arena getrennt');
           }
         });

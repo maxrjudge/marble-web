@@ -12,6 +12,7 @@
     <a class="logo" href="#live"><span class="flag" aria-hidden="true"><i></i><i></i><i></i></span><span>MURMEL-ARENA</span></a>
     <nav aria-label="Hauptmenü" id="nav">
       <a href="#live" data-view="live" data-t="nav_live">Live</a>
+      <a href="#bestenliste" data-view="board" data-t="nav_board">Bestenliste</a>
       <a href="#konto" data-view="konto" data-t="nav_konto" hidden>Konto</a>
     </nav>
     <div class="right">
@@ -26,8 +27,35 @@
 
   <main id="viewLive" class="live">
     <section class="stage" aria-label="Livebild">
-      <div class="ma-player" id="player"></div>
+      <div class="ma-player" id="player"><div class="ov" id="ov" aria-hidden="true"></div></div>
       <div class="status" id="status" role="status"></div>
+      <div class="roundbar" id="roundbar">
+        <div class="rb-main"><span class="rb-kicker" id="rbKicker"></span><span class="rb-big" id="rbBig"></span></div>
+        <div class="rb-lobby" id="rbLobby"><span id="rbLobbyText"></span><div class="bar"><i id="rbLobbyBar"></i></div></div>
+      </div>
+      <section class="panel play" id="play" aria-labelledby="playTitle">
+        <div class="phead"><h2 id="playTitle" data-t="play">Mitspielen</h2><span class="hint" data-t="play_hint"></span></div>
+        <div id="playLogin" hidden><button type="button" class="btn" data-open-login data-t="play_login">Zum Mitspielen anmelden</button></div>
+        <div id="playBody">
+          <div class="pgrid" id="pRace">
+            <button type="button" class="pbtn main" id="bJoin"><b data-t="b_join">Mitfahren</b><small id="bJoinSub"></small></button>
+            <button type="button" class="pbtn" id="bBet" aria-expanded="false" aria-controls="sheet"><b data-t="b_bet">Wetten</b><small id="bBetSub"></small></button>
+            <button type="button" class="pbtn" id="bBanana" aria-expanded="false" aria-controls="sheet"><b data-t="b_banana">Banane legen</b><small id="bBananaSub"></small></button>
+            <button type="button" class="pbtn" id="bDaily"><b data-t="b_daily">Tagesbonus</b><small data-t="b_daily_sub"></small></button>
+          </div>
+          <div class="chips" id="pPerk" role="group" aria-labelledby="pPerkLbl"><span class="clbl" id="pPerkLbl" data-t="perk">Deine Murmel</span></div>
+          <div class="chips" id="pKreisel" role="group" aria-labelledby="pKreiselLbl" hidden><span class="clbl" id="pKreiselLbl" data-t="kreisel">Dein Kreisel</span></div>
+          <div class="pspecial" id="pEin" hidden><div class="sphead"><b data-t="ein_title">Eingreifen</b></div><div class="chips" id="pEinBtns"></div></div>
+          <div class="pspecial" id="pSpecial" hidden></div>
+          <div class="sheet" id="sheet" hidden></div>
+          <div class="chips more" id="pMore"><span class="clbl" data-t="more">Auch dabei</span><button type="button" class="chip-b" data-sp="lotto" data-t="lotto"></button><button type="button" class="chip-b" data-sp="rad" data-t="rad"></button><button type="button" class="chip-b" data-sp="schieber" data-t="schieber"></button></div>
+          <div class="pstatus" id="pStatus" role="status" hidden></div>
+        </div>
+      </section>
+      <div class="twocol">
+        <section class="panel" aria-labelledby="soonTitle"><h2 id="soonTitle" data-t="soon">Gleich dran</h2><div class="soon" id="soon"></div></section>
+        <section class="panel" aria-labelledby="weekTitle"><h2 id="weekTitle"></h2><div class="wk" id="weekTop"></div><p class="hint" id="weekFinale"></p></section>
+      </div>
     </section>
     <aside class="chat" aria-label="Chat">
       <div class="chathead"><h2 data-t="chat">Chat</h2><span id="count"></span><span class="pill" id="arenaPill"></span></div>
@@ -40,12 +68,22 @@
     </aside>
   </main>
 
+  <main id="viewBoard" class="konto" hidden>
+    <h1 data-t="bd_title">Bestenliste</h1>
+    <div class="tabs" role="tablist" id="bdTabs">
+      <button type="button" role="tab" data-bd="woche" data-t="bd_woche">Woche</button><button type="button" role="tab" data-bd="siege" data-t="bd_siege">Siege</button><button type="button" role="tab" data-bd="xp" data-t="bd_xp">Erfahrung</button>
+    </div>
+    <p class="hint" id="bdNote"></p>
+    <section class="panel"><div class="tblwrap"><table class="tbl" id="bdTable"></table></div><p class="hint" id="bdMe"></p></section>
+  </main>
+
   <main id="viewKonto" class="konto" hidden>
     <section class="hero">
       <span class="ball" id="kBall"></span>
       <div><h1 id="kName"></h1><p class="hint" id="kSub"></p></div>
     </section>
     <section class="tiles" id="kTiles"></section>
+    <section class="panel" id="kHist"><h2 data-t="k_history">Letzte Runden</h2><div class="tblwrap"><table class="tbl" id="kHistTable"></table></div></section>
     <div class="cols">
       <section class="card">
         <h2 data-t="settings">Einstellungen</h2>

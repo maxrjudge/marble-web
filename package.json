@@ -1,6 +1,6 @@
 {
   "name": "marble-web",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MarbleArena-Website: Livebild aus LSM, Chat mit Twitch-Brücke, Anmeldung, Anbindung an die Murmel-Arena",
   "scripts": {
     "build": "vite build && tsc -p tsconfig.json",

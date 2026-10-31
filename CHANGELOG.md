@@ -12,6 +12,15 @@ Neue Fassung: `node scripts/version.mjs patch|minor|major`.
 
 ## Unveröffentlicht
 
+## 0.2.0 – 2026-10-31
+
+- Etappe 2: Mitspielen per Knopf – Mitfahren, Murmel-Eigenschaft (bzw. Kreisel-Typ und Drehrichtung), Wetten (Starter mit Quote, Einsatz 10–500 S), Banane auf Abschnitt 1–10, Tagesbonus; Lotto (Quicktipp oder eigene 6 Zahlen), Glücksrad (Farbe, Hälfte, Jackpot, Einsatz), Münzschieber (Bahn 1–5, 1–3 Münzen) vorne, wenn sie als Nächstes dran sind, sonst unter „Auch dabei“; im Rennen Eingriffe für Last Car Standing und Kreiselkampf (mit Ziel) und Anfeuern. Jeder Knopf schickt den normalen Befehl, die Antwort der Arena steht unter den Knöpfen
+- Runde im Takt mit dem Bild: über dem Livebild Runde, Spielart, Strecke, im Rennen die ersten drei, in der Siegerehrung der Sieg – um so viel später, wie das Bild hinterher ist (`delay_ms` vom LSM-Embed); darunter die Leiste in echter Zeit (Anmeldung schließt in …, Start in …, nächste Runde, Plätze im Feld)
+- „Gleich dran“ (Spielplan der Arena) und Woche (die ersten fünf, Finale) neben den Knöpfen; ohne Arena kommt die Woche vom Server
+- Bestenliste als eigene Seite: Woche (beste 20 Rennen, wie in der Arena), ewig nach Siegen und nach Erfahrung, der eigene Platz markiert
+- Konto: Stufe und Titel, Erfahrung mit Balken bis zur nächsten Stufe, Platz in der Woche, letzte Runden (je Runde Spielart, Platz, Schilling) – aufgezeichnet aus den Spielständen, die die Arena schickt
+- Befehle haben eine eigene Bremse (8 in 10 s) statt „eine Zeile je Sekunde“, damit mehrere Knöpfe schnell hintereinander gehen
+
 ## 0.1.0 – 2026-10-31
 
 - Etappe 1 der Website: Livebild aus LSM als Embed (Low Latency über SLDP/Nimio, Verzögerung per `postMessage` unter dem Bild), Chat mit Twitch-Brücke in beide Richtungen (`[web] Name: Text` nach Twitch, Twitch-Zeilen auf der Seite), Anmeldung mit Twitch oder Link per Mail (ohne Passwort), erstes Einrichten mit Name, Murmelfarbe und Altersbestätigung, Kontoseite mit Spielstand, Verknüpfungen, Datenauskunft und Löschen

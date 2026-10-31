@@ -1,5 +1,7 @@
-// MarbleArena-Website: Livebild (LSM-Embed), Chat, Anmeldung, Konto.
+// MarbleArena-Website: Livebild (LSM-Embed), Runde im Takt, Mitspielen per Knopf, Chat, Anmeldung, Konto, Bestenliste.
+import { initBoard, loadBoard, renderBoard } from './board';
 import { applyStatic, getLang, hasKey, setLang, t, type Key, type Lang } from './i18n';
+import { initRunde, onFeedback, onState, render as renderPlay, renderSide, setOnline, type RoundState } from './runde';
 
 interface Me {
   name: string;
@@ -67,7 +69,10 @@ function renderLang(): void {
   renderStatus();
   renderMe();
   renderArena();
+  renderPlay();
+  void side();
   if (location.hash.startsWith('#konto')) void renderKonto();
+  if (location.hash.startsWith('#bestenliste')) void renderBoard();
 }
 document.querySelectorAll<HTMLButtonElement>('[data-lang]').forEach((b) =>
   b.addEventListener('click', () => {
@@ -85,11 +90,10 @@ interface EmbedState {
   seen: boolean;
 }
 const embed: EmbedState = { player: 'none', state: 'loading', delay: 1000, muted: true, seen: false };
-(window as unknown as { maEmbed: EmbedState }).maEmbed = embed; // für Etappe 2: Rundenanzeige im Takt
 function mountPlayer(): void {
   const box = $('player');
   if (!cfg.embed) {
-    box.innerHTML = `<p class="nostream">${t('no_stream')}</p>`;
+    box.insertAdjacentHTML('afterbegin', `<p class="nostream">${t('no_stream')}</p>`);
     return;
   }
   const f = document.createElement('iframe');
@@ -100,7 +104,7 @@ function mountPlayer(): void {
   f.referrerPolicy = 'strict-origin-when-cross-origin';
   f.loading = 'eager';
   f.addEventListener('load', () => f.contentWindow?.postMessage({ type: 'lsm-embed-hello' }, cfg.embedOrigin));
-  box.append(f);
+  box.prepend(f);
   addEventListener('message', (e) => {
     if (e.origin !== cfg.embedOrigin) return;
     const d = e.data as { type?: string; player?: EmbedState['player']; state?: string; delay_ms?: number; muted?: boolean };
@@ -194,14 +198,34 @@ function renderMe(): void {
   }
   $('say').hidden = !logged;
   $('loginHint').hidden = logged;
+  renderPlay();
 }
+// eigener Spielstand (Schilling oben, Murmel und Kreisel bei den Knöpfen)
+interface ProfileData {
+  profile: { s?: number; xp?: number; races?: number; wins?: number; podiums?: number; perk?: string; kreisel?: { typ?: string; links?: boolean } } | null;
+  level?: number;
+  xpFrom?: number;
+  xpTo?: number;
+  titles?: string[];
+  week?: { key: string; place: number | null; pts: number; of: number };
+  history?: { round: number; at: number; art: string; artName: string; track: string | null; rank: number | null; of: number | null; ds: number; dxp: number; raced: number }[];
+}
+let prof: ProfileData | null = null;
 async function loadSchilling(): Promise<void> {
   const chip = $('schilling');
   if (!me || me.setup) return void (chip.hidden = true);
-  const r = await api<{ profile: { s?: number } | null }>('/api/profile');
-  const s = r.data.profile?.s;
+  const r = await api<ProfileData>(`/api/profile?lang=${getLang()}`);
+  prof = r.ok ? r.data : null;
+  const s = prof?.profile?.s;
   chip.hidden = typeof s !== 'number';
   if (typeof s === 'number') chip.textContent = `${s.toLocaleString(getLang())} S`;
+  renderPlay();
+}
+let fbReload: ReturnType<typeof setTimeout> | undefined;
+// Spielstand kommt mit ein paar Sekunden Verzug von der Arena an den Server
+function reloadSoon(): void {
+  clearTimeout(fbReload);
+  fbReload = setTimeout(() => void loadSchilling(), 3500);
 }
 
 // ---------- Chat ----------
@@ -274,6 +298,9 @@ function connectChat(): void {
       chatMe = m.me;
       arenaOn = !!m.arena;
       renderArena();
+      setOnline(arenaOn);
+      onState((m.state as RoundState | null) ?? null);
+      void side();
       lines.innerHTML = '';
       (m.history as Line[]).forEach(addLine);
       lines.scrollTop = lines.scrollHeight;
@@ -283,9 +310,17 @@ function connectChat(): void {
     else if (m.t === 'arena') {
       arenaOn = !!m.on;
       renderArena();
+      setOnline(arenaOn);
+    } else if (m.t === 'state') {
+      onState((m.s as RoundState | null) ?? null);
+      sideSoon();
     } else if (m.t === 'fb') {
       toast(m.text, m.kind === 'err' ? 'err' : m.kind === 'ok' ? 'ok' : 'info');
-      if (m.kind === 'ok') void loadSchilling();
+      onFeedback(String(m.text), String(m.kind));
+      if (m.kind === 'ok') {
+        void loadSchilling();
+        reloadSoon();
+      }
     } else if (m.t === 'err') toast(errText(m.code), 'err');
     else if (m.t === 'sys' && m.code === 'muted') toast(t('muted_ok', { name: m.name, m: m.minutes }), 'ok');
   };
@@ -316,25 +351,36 @@ async function renderKonto(): Promise<void> {
   if (!me) return;
   $('kName').textContent = me.name;
   $('kBall').style.background = me.color;
-  const r = await api<{ profile: Record<string, number> | null }>('/api/profile');
-  const p = r.data.profile;
+  const r = await api<ProfileData>(`/api/profile?lang=${getLang()}`);
+  const d0 = r.ok ? r.data : null;
+  const p = d0?.profile ?? null;
+  const L = getLang();
+  $('kSub').textContent = p && d0 ? [t('k_level', { n: d0.level ?? 1 }), ...(d0.titles ?? []).slice(0, 2)].join(' · ') : '';
   const tiles = $('kTiles');
   tiles.innerHTML = '';
-  if (!p) tiles.innerHTML = `<p class="hint">${t('k_noprofile')}</p>`;
-  else
-    for (const [k, v, sub] of [
-      ['k_schilling', `${(p.s ?? 0).toLocaleString(getLang())} S`, ''],
-      ['k_xp', `${(p.xp ?? 0).toLocaleString(getLang())} XP`, ''],
-      ['k_races', String(p.races ?? 0), `${p.wins ?? 0} ${t('k_wins')} · ${p.podiums ?? 0} ${t('k_podiums')}`],
-    ] as [Key, string, string][]) {
+  if (!p || !d0) tiles.innerHTML = `<p class="hint">${t('k_noprofile')}</p>`;
+  else {
+    const xp = p.xp ?? 0;
+    const span = Math.max(1, (d0.xpTo ?? 1) - (d0.xpFrom ?? 0));
+    const frac = Math.min(1, Math.max(0, (xp - (d0.xpFrom ?? 0)) / span));
+    const wk = d0.week;
+    for (const [k, v, sub, bar] of [
+      ['k_schilling', `${(p.s ?? 0).toLocaleString(L)} S`, '', null],
+      ['k_xp', `${xp.toLocaleString(L)} XP`, t('k_to_next', { n: Math.max(0, (d0.xpTo ?? 0) - xp).toLocaleString(L), l: (d0.level ?? 1) + 1 }), frac],
+      ['k_races', String(p.races ?? 0), `${p.wins ?? 0} ${t('k_wins')} · ${p.podiums ?? 0} ${t('k_podiums')}`, null],
+      ['k_week', wk?.place ? t('k_week_place', { n: wk.place }) : t('k_week_none'), wk?.place ? t('k_week_sub', { p: wk.pts, n: wk.of }) : '', null],
+    ] as [Key, string, string, number | null][]) {
       const d = document.createElement('div');
       d.className = 'tile';
-      d.innerHTML = `<span class="lbl"></span><span class="val"></span><span class="hint"></span>`;
-      (d.children[0] as HTMLElement).textContent = t(k);
-      (d.children[1] as HTMLElement).textContent = v;
-      (d.children[2] as HTMLElement).textContent = sub;
+      d.innerHTML = `<span class="lbl"></span><span class="val"></span>${bar !== null ? '<div class="bar"><i></i></div>' : ''}<span class="hint"></span>`;
+      (d.querySelector('.lbl') as HTMLElement).textContent = t(k);
+      (d.querySelector('.val') as HTMLElement).textContent = v;
+      (d.querySelector('.hint') as HTMLElement).textContent = sub;
+      if (bar !== null) (d.querySelector('.bar i') as HTMLElement).style.width = `${Math.round(bar * 100)}%`;
       tiles.append(d);
     }
+  }
+  renderHistory(d0?.history ?? []);
   $<HTMLInputElement>('kNameIn').value = me.name;
   const locked = !me.twitch && !!p;
   $<HTMLInputElement>('kNameIn').disabled = locked;
@@ -345,6 +391,43 @@ async function renderKonto(): Promise<void> {
   $('kTwitchBtn').hidden = !!me.twitch || !cfg.twitchLogin;
   $('kMail').textContent = me.email ?? '–';
   $('kMailForm').hidden = !!me.email || !cfg.mailLogin;
+}
+function renderHistory(h: NonNullable<ProfileData['history']>): void {
+  const table = $('kHistTable');
+  const L = getLang();
+  const head = document.createElement('thead');
+  head.innerHTML = '<tr><th></th><th></th><th></th><th class="num"></th></tr>';
+  const ths = head.querySelectorAll('th');
+  (['k_h_when', 'k_h_art', 'k_h_result', 'k_h_s'] as Key[]).forEach((k, i) => (ths[i].textContent = t(k)));
+  const body = document.createElement('tbody');
+  if (!h.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 4;
+    td.className = 'hint';
+    td.textContent = t('k_h_none');
+    tr.append(td);
+    body.append(tr);
+  }
+  const day = (ts: number) => new Date(ts).toLocaleDateString(L, { timeZone: 'Europe/Vienna' });
+  const today = day(Date.now());
+  const yest = day(Date.now() - 86400e3);
+  for (const r of h) {
+    const tr = document.createElement('tr');
+    const dd = day(r.at);
+    const time = new Date(r.at).toLocaleTimeString(L, { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Vienna' });
+    const when = `${dd === today ? t('today') : dd === yest ? t('yesterday') : dd} ${time}`;
+    const res = r.rank ? (r.of ? t('k_h_rank', { r: r.rank, n: r.of }) : t('k_h_rank1', { r: r.rank })) : r.raced ? t('k_h_raced') : t('k_h_bet');
+    const ds = r.ds > 0 ? `+${r.ds.toLocaleString(L)} S` : r.ds < 0 ? `−${Math.abs(r.ds).toLocaleString(L)} S` : '0 S';
+    [when, [r.artName, r.track].filter(Boolean).join(' · '), res, ds].forEach((c, i) => {
+      const td = document.createElement('td');
+      td.textContent = c;
+      if (i === 3) td.className = `num ${r.ds > 0 ? 'plus' : r.ds < 0 ? 'minus' : ''}`;
+      tr.append(td);
+    });
+    body.append(tr);
+  }
+  table.replaceChildren(head, body);
 }
 $('kForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -372,14 +455,31 @@ $('kDelete').addEventListener('click', async () => {
   location.href = '/';
 });
 
+// ---------- Gleich dran und Woche ----------
+let sideT: ReturnType<typeof setTimeout> | undefined;
+function sideSoon(): void {
+  if (sideT) return;
+  sideT = setTimeout(() => {
+    sideT = undefined;
+    void side();
+  }, 2000);
+}
+async function side(): Promise<void> {
+  const b = arenaOn ? null : await loadBoard();
+  renderSide(b ? { key: b.week, top: b.woche.slice(0, 5) } : null);
+}
+
 // ---------- Ansichten ----------
 function route(): void {
   const h = location.hash;
-  const konto = h.startsWith('#konto') && !!me;
-  $('viewLive').hidden = konto;
-  $('viewKonto').hidden = !konto;
-  document.querySelectorAll<HTMLAnchorElement>('#nav a').forEach((a) => a.setAttribute('aria-current', String((a.dataset.view === 'konto') === konto)));
+  const view = h.startsWith('#konto') && me ? 'konto' : h.startsWith('#bestenliste') ? 'board' : 'live';
+  $('viewLive').hidden = view !== 'live';
+  $('viewKonto').hidden = view !== 'konto';
+  $('viewBoard').hidden = view !== 'board';
+  const konto = view === 'konto';
+  document.querySelectorAll<HTMLAnchorElement>('#nav a').forEach((a) => a.setAttribute('aria-current', String(a.dataset.view === view)));
   if (konto) void renderKonto();
+  if (view === 'board') void renderBoard();
   if (h.startsWith('#willkommen') && me) openSetup();
   const err = h.match(/fehler=([a-z_]+)/)?.[1] ?? new URLSearchParams(location.search).get('fehler');
   if (err) {
@@ -394,6 +494,21 @@ async function start(): Promise<void> {
   me = (await api<{ user: Me | null }>('/api/me')).data.user;
   $('ver').textContent = `MarbleArena ${cfg.version}`;
   applyStatic();
+  initRunde({
+    embed,
+    me: () => (me && !me.setup ? { key: me.key, perk: prof?.profile?.perk, kreisel: prof?.profile?.kreisel } : null),
+    send: (text) => {
+      if (!arenaOn) {
+        toast(errText('arena'), 'err');
+        return false;
+      }
+      if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+      ws.send(JSON.stringify({ t: 'say', text }));
+      return true;
+    },
+    login: () => (me?.setup ? openSetup() : openLogin()),
+  });
+  initBoard();
   renderLang();
   mountPlayer();
   connectChat();
