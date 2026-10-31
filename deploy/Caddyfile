@@ -1,0 +1,17 @@
+# Ausschnitt für /etc/caddy/Caddyfile (neben HORDE usw.), danach: sudo systemctl reload caddy
+# Zertifikat holt Caddy selbst; WebSockets (/ws, /arena) gehen ohne Zusatz durch.
+# Sicherheitskopfzeilen (CSP mit frame-src https://io.maxr.at, Referrer-Policy) setzt die Seite selbst.
+arena.maxr.at {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:5310
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+	log {
+		output file /var/log/caddy/arena.maxr.at.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}

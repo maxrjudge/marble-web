@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MarbleArena live</title>
+  <meta name="description" content="Die MarbleArena live: Murmelrennen, Kreiselkampf, Glücksrad und Münzschieber – mitspielen im Chat.">
+  <link rel="stylesheet" href="./src/style.css">
+</head>
+<body>
+  <header class="top">
+    <a class="logo" href="#live"><span class="flag" aria-hidden="true"><i></i><i></i><i></i></span><span>MURMEL-ARENA</span></a>
+    <nav aria-label="Hauptmenü" id="nav">
+      <a href="#live" data-view="live" data-t="nav_live">Live</a>
+      <a href="#konto" data-view="konto" data-t="nav_konto" hidden>Konto</a>
+    </nav>
+    <div class="right">
+      <div class="lang" role="group" aria-label="Sprache / Language">
+        <button type="button" data-lang="de" aria-pressed="true">DE</button><button type="button" data-lang="en" aria-pressed="false">EN</button>
+      </div>
+      <span class="chip" id="schilling" hidden></span>
+      <button type="button" class="btn" id="loginBtn" data-t="login">Anmelden</button>
+      <a href="#konto" class="me" id="meLink" hidden><span class="dot" id="meDot"></span><span id="meName"></span></a>
+    </div>
+  </header>
+
+  <main id="viewLive" class="live">
+    <section class="stage" aria-label="Livebild">
+      <div class="ma-player" id="player"></div>
+      <div class="status" id="status" role="status"></div>
+    </section>
+    <aside class="chat" aria-label="Chat">
+      <div class="chathead"><h2 data-t="chat">Chat</h2><span id="count"></span><span class="pill" id="arenaPill"></span></div>
+      <ol class="lines" id="lines" aria-live="polite"></ol>
+      <form id="say" class="say" autocomplete="off">
+        <label for="sayText" class="hint" data-t="say_label">Nachricht an alle (auch im Twitch-Chat)</label>
+        <div class="row"><input id="sayText" maxlength="300" data-tp="say_ph" placeholder="Schreib was oder !befehl"><button class="btn" data-t="send">Senden</button></div>
+      </form>
+      <div class="loginhint" id="loginHint"><button type="button" class="btn" data-open-login data-t="login_to_chat">Anmelden zum Mitschreiben</button></div>
+    </aside>
+  </main>
+
+  <main id="viewKonto" class="konto" hidden>
+    <section class="hero">
+      <span class="ball" id="kBall"></span>
+      <div><h1 id="kName"></h1><p class="hint" id="kSub"></p></div>
+    </section>
+    <section class="tiles" id="kTiles"></section>
+    <div class="cols">
+      <section class="card">
+        <h2 data-t="settings">Einstellungen</h2>
+        <form id="kForm" class="stack">
+          <label for="kNameIn" data-t="display_name">Anzeigename</label>
+          <input id="kNameIn" maxlength="20">
+          <span class="hint" id="kNameHint"></span>
+          <span data-t="color">Farbe der Murmel</span>
+          <div class="swatches" id="kSwatches"></div>
+          <button class="btn" data-t="save">Speichern</button>
+          <span class="hint" id="kSaved" role="status"></span>
+        </form>
+      </section>
+      <section class="card">
+        <h2 data-t="linked">Verknüpft</h2>
+        <div class="linkrow"><b>Twitch</b><span id="kTwitch"></span><a class="btn sec" id="kTwitchBtn" href="/auth/twitch" data-t="link_twitch">Verknüpfen</a></div>
+        <div class="linkrow"><b data-t="email">E-Mail</b><span id="kMail"></span></div>
+        <form id="kMailForm" class="row" hidden><input type="email" id="kMailIn" required data-tp="email_ph" placeholder="du@beispiel.at"><button class="btn sec" data-t="send_link">Link schicken</button></form>
+        <h2 data-t="your_data">Deine Daten</h2>
+        <div class="row wrap">
+          <a class="btn sec" href="/api/account/data" data-t="download">Meine Daten herunterladen</a>
+          <button type="button" class="btn sec" id="kLogout" data-t="logout">Abmelden</button>
+          <button type="button" class="btn danger" id="kDelete" data-t="delete">Konto löschen</button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="foot"><span id="ver"></span> · <a href="/impressum.html" data-t="imprint">Impressum</a> · <a href="/datenschutz.html" data-t="privacy">Datenschutz</a> · <a href="/regeln.html" data-t="rules">Regeln</a></footer>
+
+  <dialog id="loginDlg" aria-labelledby="loginTitle">
+    <form method="dialog" class="x"><button aria-label="Schließen">×</button></form>
+    <h2 id="loginTitle" data-t="login_title">Anmelden zum Mitspielen</h2>
+    <p class="hint" data-t="login_text">Zuschauen geht ohne Konto. Zum Mitfahren, Wetten und Chatten brauchst du eines – ohne Passwort.</p>
+    <a class="btn twitch" id="twitchLogin" href="/auth/twitch" data-t="with_twitch">Mit Twitch anmelden</a>
+    <p class="hint" id="twitchHint" data-t="twitch_hint">Schon über Twitch gespielt? Dein Spielstand ist sofort da.</p>
+    <div class="or" id="loginOr"><span data-t="or">oder</span></div>
+    <p class="hint err" id="loginNone" data-t="login_none" hidden>Anmelden ist gerade nicht eingerichtet.</p>
+    <form id="mailForm" class="stack">
+      <label for="mailIn" data-t="email">E-Mail-Adresse</label>
+      <div class="row"><input type="email" id="mailIn" required data-tp="email_ph" placeholder="du@beispiel.at"><button class="btn" data-t="send_link">Link schicken</button></div>
+      <span class="hint" id="mailMsg" role="status"></span>
+    </form>
+    <p class="hint" data-t="schilling_note">Schilling sind Spielgeld: nicht kaufbar, nicht auszahlbar.</p>
+  </dialog>
+
+  <dialog id="setupDlg" aria-labelledby="setupTitle">
+    <h2 id="setupTitle" data-t="welcome">Willkommen!</h2>
+    <form id="setupForm" class="stack">
+      <label for="setupName" data-t="display_name">Anzeigename</label>
+      <input id="setupName" maxlength="20" required>
+      <span class="hint" data-t="name_rule">3–20 Zeichen: Buchstaben, Ziffern, _ . -</span>
+      <span data-t="color">Farbe der Murmel</span>
+      <div class="swatches" id="setupSwatches"></div>
+      <label class="check"><input type="checkbox" id="setupAge" required> <span data-t="age">Ich bin mindestens 14 Jahre alt und einverstanden mit den Regeln und dem Datenschutz.</span></label>
+      <span class="hint err" id="setupErr" role="alert"></span>
+      <button class="btn" data-t="lets_go">Los geht's</button>
+    </form>
+  </dialog>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>

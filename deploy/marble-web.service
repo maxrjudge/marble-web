@@ -1,0 +1,35 @@
+# /etc/systemd/system/marble-web.service
+# Einrichten:  sudo cp deploy/marble-web.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now marble-web
+# Logs:        journalctl -u marble-web -f
+[Unit]
+Description=MarbleArena-Website (arena.maxr.at)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=marble-web
+Group=marble-web
+WorkingDirectory=/opt/marble-web
+# Geheimnisse (Twitch-Secret, SMTP, ARENA_TOKEN, ADMIN_PASSWORD) nur hier, Rechte 600, Besitzer root
+EnvironmentFile=/etc/marble-web.env
+ExecStart=/usr/bin/node dist/server/main.js
+Restart=always
+RestartSec=3
+
+# Schutz: nur die Datenbank unter /var/lib/marble-web ist beschreibbar
+StateDirectory=marble-web
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
