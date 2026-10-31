@@ -2,13 +2,14 @@
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyRequest } from 'fastify';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
 import nodemailer, { type Transporter } from 'nodemailer';
 import { WebSocket, WebSocketServer } from 'ws';
 import { authRoutes, nameProblem, userFromCookieHeader, userFromRequest } from './auth.js';
-import { ChatHub, type ArenaChatMsg } from './chat.js';
+import { ChatHub, modLog, slowSeconds, userByKey, type ArenaChatMsg } from './chat.js';
+import { clipVisible, listClips, saveClip, validClipFile } from './clips.js';
 import { configProblems, type Config } from './config.js';
 import { housekeeping, kvGet, kvSet, now, openDb, userKey, type User } from './db.js';
 import { allProfiles, mergeProfiles, profileOf } from './profiles.js';
@@ -16,7 +17,7 @@ import { boards, dropBoards, historyOf, levelFor, noteHistory, titlesFor, weekKe
 import { loadBot, saveBot, TwitchIrc, type Fetch } from './twitch.js';
 import { adminPage } from './admin.js';
 
-export const VERSION = '0.2.0';
+export const VERSION = '0.3.0';
 
 export interface AppOpts {
   mailer?: Transporter | null; // Tests: eigener Transport
@@ -196,6 +197,79 @@ export async function buildApp(c: Config, o: AppOpts = {}) {
     return { ok: true, taken };
   });
 
+  // --- Clips: die Arena lädt jeden Auto-Clip hoch (Rohdaten, bis 80 MB) ---
+  const CLIP_LIMIT = 80 * 1024 * 1024;
+  app.addContentTypeParser(['application/octet-stream', 'video/mp4', 'video/webm'], { parseAs: 'buffer', bodyLimit: CLIP_LIMIT }, (_req, body, done) => done(null, body));
+  app.addContentTypeParser(/^video\/(mp4|webm);/, { parseAs: 'buffer', bodyLimit: CLIP_LIMIT }, (_req, body, done) => done(null, body));
+  app.post('/arena-api/clip', { bodyLimit: CLIP_LIMIT }, async (req, reply) => {
+    if (!arenaOk(req)) return reply.code(401).send({ error: 'token' });
+    const body = req.body as Buffer;
+    if (!Buffer.isBuffer(body) || body.length < 1000) return reply.code(400).send({ error: 'leer' });
+    const clip = saveClip(db, c.clipsDir, c.clipsMax, body, req.query as Record<string, string>);
+    hub.broadcast({ t: 'clip', clip });
+    log(`Clip: ${clip.file}`);
+    return { ok: true, file: clip.file };
+  });
+  app.get('/api/clips', async (req) => {
+    const q = req.query as Record<string, string>;
+    const u = userFromRequest(db, req);
+    return { clips: listClips(db, { limit: Number(q.limit) || 24, before: Number(q.before) || undefined, withHidden: hub.isMod(u) }) };
+  });
+
+  // --- Spielplan der Woche (kommt alle 15 s mit dem Zustand der Arena; bleibt gespeichert) ---
+  app.get('/api/plan', async () => ({ plan: kvGet(db, 'planWeek'), off: kvGet<boolean>(db, 'planOff') ?? false, at: kvGet<number>(db, 'planAt') ?? 0 }));
+
+  // --- Mods: Langsam-Modus, Wortfilter, Sperren aufheben, Clips ausblenden, Protokoll ---
+  const modOnly = (req: FastifyRequest) => {
+    const u = userFromRequest(db, req);
+    return u && hub.isMod(u) ? u : null;
+  };
+  app.get('/api/mod', async (req, reply) => {
+    if (!modOnly(req)) return reply.code(403).send({ error: 'mod' });
+    const t = now();
+    const restricted = (db.prepare('SELECT * FROM users WHERE banned = 1 OR muted_until > ? ORDER BY name').all(t) as User[]).map((u) => ({ key: userKey(u), name: u.name, banned: !!u.banned, until: u.banned ? null : u.muted_until }));
+    const log = db.prepare('SELECT at, mod_name modName, action, target, detail FROM mod_log ORDER BY id DESC LIMIT 50').all();
+    return { slow: slowSeconds(db), filter: kvGet<string[]>(db, 'filter') ?? [], restricted, log };
+  });
+  app.post('/api/mod/slow', async (req, reply) => {
+    const m = modOnly(req);
+    if (!m) return reply.code(403).send({ error: 'mod' });
+    const sec = Math.max(0, Math.min(120, Math.round(Number((req.body as { seconds?: number })?.seconds) || 0)));
+    kvSet(db, 'slow', sec);
+    modLog(db, m.name, 'slow', '', sec ? `${sec} s` : 'aus');
+    hub.broadcast({ t: 'slow', s: sec });
+    return { ok: true, slow: sec };
+  });
+  app.post('/api/mod/filter', async (req, reply) => {
+    const m = modOnly(req);
+    if (!m) return reply.code(403).send({ error: 'mod' });
+    const raw = (req.body as { words?: unknown })?.words;
+    const words = (Array.isArray(raw) ? raw : String(raw ?? '').split(/[\n,]+/)).map((x) => String(x).trim()).filter(Boolean).slice(0, 500);
+    kvSet(db, 'filter', words);
+    modLog(db, m.name, 'filter', '', `${words.length} Wörter`);
+    return { ok: true, filter: words };
+  });
+  app.post('/api/mod/lift', async (req, reply) => {
+    const m = modOnly(req);
+    if (!m) return reply.code(403).send({ error: 'mod' });
+    const u = userByKey(db, String((req.body as { key?: string })?.key ?? ''));
+    if (!u) return reply.code(404).send({ error: 'nouser' });
+    db.prepare('UPDATE users SET banned = 0, muted_until = 0 WHERE id = ?').run(u.id);
+    modLog(db, m.name, 'lift', u.name);
+    return { ok: true };
+  });
+  app.post('/api/mod/clip', async (req, reply) => {
+    const m = modOnly(req);
+    if (!m) return reply.code(403).send({ error: 'mod' });
+    const b = (req.body ?? {}) as { file?: string; hidden?: boolean };
+    const file = String(b.file ?? '');
+    if (!validClipFile(file)) return reply.code(400).send({ error: 'file' });
+    const r = db.prepare('UPDATE clips SET hidden = ? WHERE file = ?').run(b.hidden ? 1 : 0, file);
+    if (!r.changes) return reply.code(404).send({ error: 'file' });
+    modLog(db, m.name, b.hidden ? 'clip_hide' : 'clip_show', file);
+    return { ok: true };
+  });
+
   // --- Admin ---
   app.register(async (a) => {
     await a.register((await import('@fastify/formbody')).default);
@@ -238,6 +312,17 @@ export async function buildApp(c: Config, o: AppOpts = {}) {
       irc?.reconnect();
       return reply.redirect('/admin');
     });
+  });
+
+  // --- Clip-Dateien (ausgeblendete nicht) ---
+  const clipRoot = resolve(c.clipsDir);
+  mkdirSync(clipRoot, { recursive: true });
+  await app.register(async (a) => {
+    a.addHook('onRequest', async (req, reply) => {
+      const f = decodeURIComponent(req.url.split('?')[0].replace(/^\/clips\//, ''));
+      if (!validClipFile(f) || !clipVisible(db, f)) return reply.code(404).send({ error: 'not found' });
+    });
+    await a.register(fastifyStatic, { root: clipRoot, prefix: '/clips/', decorateReply: false, maxAge: '7d', immutable: true });
   });
 
   // --- Seite (gebaute Dateien) ---
@@ -285,6 +370,13 @@ export async function buildApp(c: Config, o: AppOpts = {}) {
           else if ((m.type === 'ferdl' || m.type === 'sys') && m.text) hub.fromArena(m.type, String(m.text), m.who);
           else if (m.type === 'state' && m.s && typeof m.s === 'object' && (m.s as { v?: number }).v === 1) {
             roundState = m.s as Record<string, unknown>;
+            const off = roundState.planOff === true;
+            if (Array.isArray(roundState.planWeek) || (off && kvGet<boolean>(db, 'planOff') !== true)) {
+              kvSet(db, 'planWeek', off ? null : roundState.planWeek);
+              kvSet(db, 'planOff', off);
+              kvSet(db, 'planAt', now());
+            }
+            delete roundState.planWeek;
             hub.broadcast({ t: 'state', s: roundState });
           }
         });

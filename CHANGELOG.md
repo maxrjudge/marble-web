@@ -12,6 +12,12 @@ Neue Fassung: `node scripts/version.mjs patch|minor|major`.
 
 ## Unveröffentlicht
 
+## 0.3.0 – 2026-10-31
+
+- Etappe 3: Clips – die Arena lädt jeden Auto-Clip auf die Seite hoch (`/arena-api/clip`, MP4 oder WebM bis 80 MB); Seite „Clips“ mit allen Clips (Hochformat, abspielbar, „Link kopieren“ auf genau diesen Clip, „Mehr laden“), die neuesten vier unter dem Livebild; behalten werden die neuesten 300 (`CLIPS_MAX`), Ordner `CLIPS_DIR`
+- Spielplan als eigene Seite: die ganze Woche aus der Arena (kommt alle 15 s mit, bleibt am Server gespeichert, auch wenn die Arena gerade nicht da ist) und „Als Nächstes“
+- Moderation: an jeder Zeile löschen, 5 Minuten oder 1 Stunde stumm, sperren (mit Rückfrage); Twitch-Zeilen lassen sich auf der Seite ausblenden; Mods kann man nicht stummschalten. Eigene Seite „Mod“ (nur für Mods): Langsam-Modus (aus, 3, 10, 30, 60 s je Zeile, Hinweis unter dem Eingabefeld für alle), Wortfilter, wer stumm oder gesperrt ist (mit „Aufheben“), Protokoll der letzten 50 Mod-Aktionen; Clips ausblenden
+
 ## 0.2.0 – 2026-10-31
 
 - Etappe 2: Mitspielen per Knopf – Mitfahren, Murmel-Eigenschaft (bzw. Kreisel-Typ und Drehrichtung), Wetten (Starter mit Quote, Einsatz 10–500 S), Banane auf Abschnitt 1–10, Tagesbonus; Lotto (Quicktipp oder eigene 6 Zahlen), Glücksrad (Farbe, Hälfte, Jackpot, Einsatz), Münzschieber (Bahn 1–5, 1–3 Münzen) vorne, wenn sie als Nächstes dran sind, sonst unter „Auch dabei“; im Rennen Eingriffe für Last Car Standing und Kreiselkampf (mit Ziel) und Anfeuern. Jeder Knopf schickt den normalen Befehl, die Antwort der Arena steht unter den Knöpfen

@@ -73,6 +73,7 @@ Die Datenbank liegt unter `/var/lib/marble-web/marble-web.db` (systemd legt den 
 | `ARENA_TOKEN` | Schlüssel, mit dem sich die Arena anmeldet (mind. 16 Zeichen, `openssl rand -hex 24`) |
 | `ADMIN_PASSWORD` | `/admin` (mind. 10 Zeichen) |
 | `PORT`, `HOST`, `DB_PATH` | Vorgaben 5310, 127.0.0.1, `marble-web.db` |
+| `CLIPS_DIR`, `CLIPS_MAX` | Ordner für die Clips der Arena (Vorgabe `clips`, am Server `/var/lib/marble-web/clips`) und wie viele bleiben (300) |
 
 Was fehlt, steht beim Start im Log und oben auf `/admin`. Die Seite läuft auch mit Lücken (z. B. ohne Mail nur Twitch-Anmeldung).
 
@@ -126,6 +127,12 @@ Die Arena meldet einmal je Sekunde ihren Zustand über `/arena` (Phase, Spielart
 - **Knöpfe** schicken normale Chat-Befehle (`!join`, `!perk gummi`, `!wette Pepi 50`, `!banane 4`, `!daily`, `!tipp quick`, `!tipp 3 12 17 25 33 41`, `!rad rot 50`, `!muenze 3 2`, `!kreisel angriff`, `!reparatur Name` …) über den Chat der Seite an die Arena. Sie erscheinen nicht im Chat; die Antwort der Arena kommt nur beim Absender an (als Meldung und unter den Knöpfen). Für Befehle gilt eine eigene Bremse: 8 in 10 Sekunden.
 - **Letzte Runden im Konto:** Der Server vergleicht jeden Spielstand, den die Arena schickt, mit dem vorigen und schreibt die Änderung der laufenden Runde zu (Schilling, Erfahrung, mitgefahren; den Platz aus dem Ergebnis, die ersten zehn). Eine Wette, die in der Siegerehrung für das nächste Rennen gesetzt wird, steht deshalb bei der Runde, in der sie gesetzt wurde. Aufbewahrt 90 Tage.
 - **Bestenliste:** Woche wie in der Arena (beste 20 Rennen, Montag bis Sonntag, Wiener Zeit), ewig nach Siegen und nach Erfahrung; gerechnet aus den Spielständen am Server, höchstens alle 20 Sekunden neu.
+
+## Clips, Spielplan, Moderation
+
+- **Clips:** Mit `&seite=…` nimmt die Arena ihre Auto-Clips auch ohne Hilfsdienst auf (einschalten mit `&clips=1` oder in der Regie) und lädt jeden auf die Seite hoch. Sie liegen in `CLIPS_DIR` (am Server `/var/lib/marble-web/clips`), die neuesten `CLIPS_MAX` (Vorgabe 300) bleiben. Die Seite „Clips“ zeigt sie, „Link kopieren“ teilt genau einen (`/#clip=<datei>`). Mods können einen Clip ausblenden; dann ist auch die Datei nicht mehr abrufbar. Die Clips beim Hilfsdienst (Regie, Best-of) bleiben wie bisher.
+- **Spielplan:** Die Arena schickt alle 15 Sekunden die ganze Woche mit; der Server hebt sie auf (`/api/plan`), die Seite „Spielplan“ zeigt sie auch, wenn die Arena gerade nicht verbunden ist.
+- **Moderation:** Mods (Twitch-Mods des Kanals, sobald sie mit Twitch angemeldet sind, und eigene Mods aus `/admin`) haben an jeder Zeile Werkzeuge: löschen, 5 Minuten, 1 Stunde, sperren. Twitch-Zeilen lassen sich nur auf der Seite ausblenden (in Twitch bleiben sie). Die Seite „Mod“ hat den Langsam-Modus, den Wortfilter, die Liste der Stummen und Gesperrten zum Aufheben und das Protokoll. Gesperrte können nichts mehr schreiben und nicht mitspielen; neu anmelden geht für sie nicht.
 
 ## Konten und Regeln
 

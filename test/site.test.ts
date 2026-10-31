@@ -11,6 +11,7 @@ import { buildApp } from '../server/app.ts';
 import { loadConfig } from '../server/config.ts';
 import { openDb } from '../server/db.ts';
 import { parseIrc, saveBot } from '../server/twitch.ts';
+import { resetLimits } from '../server/auth.ts';
 
 const TOKEN = 'arena-token-0123456789';
 let base = '';
@@ -77,6 +78,7 @@ function wsClient(jar?: Map<string, string>, path = '/ws') {
   return { ws, got, opened, waitFor };
 }
 async function mailLogin(email: string, name: string) {
+  resetLimits();
   const s = cookieJar();
   const r = await s.f('/auth/mail', { method: 'POST', json: { email } });
   assert.equal(r.status, 200);
@@ -109,7 +111,7 @@ before(async () => {
   const db0 = openDb(dbPath);
   saveBot(db0, { login: 'arenabot', access: 'acc-bot', refresh: 'ref', expires: Date.now() + 3600e3 });
   db0.close();
-  const c = loadConfig({ port: 0, baseUrl: 'http://127.0.0.1:1', dbPath, publicDir: join(dir, 'leer'), lsmStreamKey: 'abc123', arenaToken: TOKEN, adminPassword: 'geheim-admin-1', twitch: { clientId: 'cid', clientSecret: 'sec', channel: 'marblearena' }, smtp: { host: 'x', port: 1, user: '', pass: '', from: 'a@b.at', secure: false }, secureCookies: false });
+  const c = loadConfig({ port: 0, baseUrl: 'http://127.0.0.1:1', dbPath, publicDir: join(dir, 'leer'), clipsDir: join(dir, 'clips'), clipsMax: 10, lsmStreamKey: 'abc123', arenaToken: TOKEN, adminPassword: 'geheim-admin-1', twitch: { clientId: 'cid', clientSecret: 'sec', channel: 'marblearena' }, smtp: { host: 'x', port: 1, user: '', pass: '', from: 'a@b.at', secure: false }, secureCookies: false });
   const transport = nodemailer.createTransport({ jsonTransport: true });
   const orig = transport.sendMail.bind(transport);
   transport.sendMail = (async (m: { to: string; text: string }) => {
@@ -395,4 +397,108 @@ test('Spielstand: Stufe, Titel, Wochenplatz, letzte Runden aus den Änderungen; 
   assert.equal(b.me.woche.place, 2);
   assert.ok(!('key' in b.woche[0]), 'keine Schlüssel in der öffentlichen Liste');
   arena.ws.close();
+});
+
+// ---------- Etappe 3 ----------
+async function makeMod(name: string) {
+  const r = await fetch(`${base}/admin/mod`, { method: 'POST', headers: { origin, authorization: `Basic ${Buffer.from('admin:geheim-admin-1').toString('base64')}`, 'content-type': 'application/x-www-form-urlencoded' }, body: `name=${name}&on=1`, redirect: 'manual' });
+  assert.equal(r.status, 302);
+}
+
+test('Clips: Arena lädt hoch, Liste, Datei mit Range, Mod blendet aus, nur die neuesten bleiben', async () => {
+  const video = Buffer.alloc(5000, 7);
+  const up = (title: string, token = TOKEN) => fetch(`${base}/arena-api/clip?token=${token}&kind=photo&title=${encodeURIComponent(title)}&track=Winterpiste&round=12&ext=mp4&score=9&dur=11.4&lang=de`, { method: 'POST', headers: { 'content-type': 'video/mp4' }, body: video });
+  assert.equal((await up('x', 'falsch')).status, 401);
+  const viewer = wsClient();
+  await viewer.opened;
+  await viewer.waitFor((m) => m.t === 'hello');
+  const r = await (await up('Fotofinish! Lisi vor Otto')).json();
+  assert.match(r.file, /^\d{8}-\d{6}-fotofinish-lisi-vor-otto\.mp4$/);
+  await viewer.waitFor((m) => m.t === 'clip');
+  const list = (await (await fetch(`${base}/api/clips`)).json()).clips;
+  assert.equal(list[0].title, 'Fotofinish! Lisi vor Otto');
+  assert.equal(list[0].dur, 11.4);
+  const f = await fetch(`${base}/clips/${r.file}`, { headers: { range: 'bytes=0-99' } });
+  assert.equal(f.status, 206);
+  assert.equal((await f.arrayBuffer()).byteLength, 100);
+  assert.equal((await fetch(`${base}/clips/..%2Ft.db`)).status, 404);
+  // Mod blendet aus: Datei und Liste weg, für Mods sichtbar
+  const mod = await mailLogin('modi@beispiel.at', 'Modi');
+  await makeMod('Modi');
+  assert.equal((await (await cookieJar().f('/api/mod')).status), 403);
+  assert.equal((await mod.f('/api/mod/clip', { method: 'POST', json: { file: r.file, hidden: true } })).status, 200);
+  assert.equal((await fetch(`${base}/clips/${r.file}`)).status, 404);
+  assert.ok(!(await (await fetch(`${base}/api/clips`)).json()).clips.some((x: { file: string }) => x.file === r.file));
+  assert.ok((await (await mod.f('/api/clips')).json()).clips.some((x: { file: string; hidden: number }) => x.file === r.file && x.hidden === 1));
+  // höchstens 10 behalten
+  for (let i = 0; i < 12; i++) await up(`Clip ${i}`);
+  const all = (await (await mod.f('/api/clips?limit=60')).json()).clips;
+  assert.equal(all.length, 10);
+  assert.equal(all[0].title, 'Clip 11');
+  viewer.ws.close();
+});
+
+test('Moderation: Langsam-Modus, sperren und aufheben, Mods geschützt, Protokoll, Wortfilter', async () => {
+  const mod = await mailLogin('mod2@beispiel.at', 'Moddi');
+  await makeMod('Moddi');
+  const bad = await mailLogin('bad@beispiel.at', 'Rambo');
+  const m = wsClient(mod.jar);
+  const b = wsClient(bad.jar);
+  await Promise.all([m.opened, b.opened]);
+  await m.waitFor((x) => x.t === 'hello');
+  await b.waitFor((x) => x.t === 'hello');
+  // Langsam-Modus 3 s
+  assert.equal((await mod.f('/api/mod/slow', { method: 'POST', json: { seconds: 3 } })).status, 200);
+  await b.waitFor((x) => x.t === 'slow' && x.s === 3);
+  b.ws.send(JSON.stringify({ t: 'say', text: 'eins' }));
+  await m.waitFor((x) => x.t === 'msg' && (x.m as { text: string }).text === 'eins');
+  await sleep(1200);
+  b.ws.send(JSON.stringify({ t: 'say', text: 'zwei' }));
+  const e = await b.waitFor((x) => x.t === 'err' && x.code === 'slow');
+  assert.ok(Number(e.wait) >= 1);
+  await mod.f('/api/mod/slow', { method: 'POST', json: { seconds: 0 } });
+  // Mods sind geschützt
+  m.ws.send(JSON.stringify({ t: 'mute', key: 'web:moddi', minutes: 5 }));
+  await m.waitFor((x) => x.t === 'err' && x.code === 'ismod');
+  // sperren
+  m.ws.send(JSON.stringify({ t: 'mute', key: 'web:rambo', minutes: 100000 }));
+  await m.waitFor((x) => x.t === 'sys' && x.code === 'banned');
+  await b.waitFor((x) => x.t === 'err' && x.code === 'banned');
+  await sleep(1100);
+  b.ws.send(JSON.stringify({ t: 'say', text: 'drei' }));
+  await sleep(200);
+  assert.ok(!m.got.some((x) => x.t === 'msg' && (x.m as { text: string }).text === 'drei'), 'gesperrt schreibt nicht');
+  const d = await (await mod.f('/api/mod')).json();
+  assert.ok(d.restricted.some((r: { name: string; banned: boolean }) => r.name === 'Rambo' && r.banned));
+  assert.deepEqual(d.log.slice(0, 3).map((x: { action: string }) => x.action), ['ban', 'slow', 'slow']);
+  assert.equal((await mod.f('/api/mod/lift', { method: 'POST', json: { key: 'web:rambo' } })).status, 200);
+  assert.ok(!(await (await mod.f('/api/mod')).json()).restricted.some((r: { name: string }) => r.name === 'Rambo'), 'Rambo wieder frei');
+  // Wortfilter durch Mods
+  await mod.f('/api/mod/filter', { method: 'POST', json: { words: 'gurke\nkas' } });
+  await sleep(1100);
+  b.ws.send(JSON.stringify({ t: 'say', text: 'so a Gurke' }));
+  await b.waitFor((x) => x.t === 'err' && x.code === 'filter');
+  await mod.f('/api/mod/filter', { method: 'POST', json: { words: '' } });
+  m.ws.close();
+  b.ws.close();
+});
+
+test('Spielplan der Woche: von der Arena übernommen, bleibt gespeichert, nicht im Zustand an die Browser', async () => {
+  const arena = wsClient(undefined, `/arena?token=${TOKEN}`);
+  await arena.opened;
+  const v = wsClient();
+  await v.opened;
+  await v.waitFor((m) => m.t === 'hello');
+  const week = [{ day: 'Mo 2.11.', today: true, items: [{ at: '20:00', what: 'Last Car Standing', art: 'lastcar' }] }];
+  arena.ws.send(JSON.stringify({ type: 'state', s: baseState({ round: 300, planWeek: week, planOff: false }) }));
+  const st = (await v.waitFor((m) => m.t === 'state' && (m.s as { round: number }).round === 300)) as { s: Record<string, unknown> };
+  assert.ok(!('planWeek' in st.s));
+  const p = await (await fetch(`${base}/api/plan`)).json();
+  assert.deepEqual(p.plan, week);
+  assert.equal(p.off, false);
+  arena.ws.send(JSON.stringify({ type: 'state', s: baseState({ round: 301, planOff: true }) }));
+  await v.waitFor((m) => m.t === 'state' && (m.s as { round: number }).round === 301);
+  assert.equal((await (await fetch(`${base}/api/plan`)).json()).off, true);
+  arena.ws.close();
+  v.ws.close();
 });

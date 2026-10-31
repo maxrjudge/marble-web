@@ -13,6 +13,9 @@
     <nav aria-label="Hauptmenü" id="nav">
       <a href="#live" data-view="live" data-t="nav_live">Live</a>
       <a href="#bestenliste" data-view="board" data-t="nav_board">Bestenliste</a>
+      <a href="#spielplan" data-view="plan" data-t="nav_plan">Spielplan</a>
+      <a href="#clips" data-view="clips" data-t="nav_clips">Clips</a>
+      <a href="#mod" data-view="mod" data-t="nav_mod" hidden>Mod</a>
       <a href="#konto" data-view="konto" data-t="nav_konto" hidden>Konto</a>
     </nav>
     <div class="right">
@@ -56,12 +59,17 @@
         <section class="panel" aria-labelledby="soonTitle"><h2 id="soonTitle" data-t="soon">Gleich dran</h2><div class="soon" id="soon"></div></section>
         <section class="panel" aria-labelledby="weekTitle"><h2 id="weekTitle"></h2><div class="wk" id="weekTop"></div><p class="hint" id="weekFinale"></p></section>
       </div>
+      <section class="panel" id="clipStrip" aria-labelledby="clipStripTitle" hidden>
+        <div class="phead"><h2 id="clipStripTitle" data-t="cl_new">Neue Clips</h2><a href="#clips" data-t="cl_all">Alle Clips</a></div>
+        <div class="cgrid small" id="clipStripGrid"></div>
+      </section>
     </section>
     <aside class="chat" aria-label="Chat">
       <div class="chathead"><h2 data-t="chat">Chat</h2><span id="count"></span><span class="pill" id="arenaPill"></span></div>
       <ol class="lines" id="lines" aria-live="polite"></ol>
       <form id="say" class="say" autocomplete="off">
         <label for="sayText" class="hint" data-t="say_label">Nachricht an alle (auch im Twitch-Chat)</label>
+        <span class="hint slowhint" id="slowHint" hidden></span>
         <div class="row"><input id="sayText" maxlength="300" data-tp="say_ph" placeholder="Schreib was oder !befehl"><button class="btn" data-t="send">Senden</button></div>
       </form>
       <div class="loginhint" id="loginHint"><button type="button" class="btn" data-open-login data-t="login_to_chat">Anmelden zum Mitschreiben</button></div>
@@ -75,6 +83,41 @@
     </div>
     <p class="hint" id="bdNote"></p>
     <section class="panel"><div class="tblwrap"><table class="tbl" id="bdTable"></table></div><p class="hint" id="bdMe"></p></section>
+  </main>
+
+  <main id="viewPlan" class="konto" hidden>
+    <h1 data-t="pl_title">Spielplan</h1>
+    <p class="hint" id="plNote"></p>
+    <section class="panel" id="plNextBox"><h2 data-t="pl_next">Als Nächstes</h2><div class="soon" id="plNext"></div></section>
+    <div class="pweek" id="plWeek"></div>
+  </main>
+
+  <main id="viewClips" class="konto wide" hidden>
+    <h1 data-t="cl_title">Clips</h1>
+    <p class="hint" data-t="cl_note"></p>
+    <div class="cgrid" id="clipGrid"></div>
+    <button type="button" class="btn sec" id="clipMore" data-t="cl_more" hidden>Mehr laden</button>
+  </main>
+
+  <main id="viewMod" class="konto" hidden>
+    <h1 data-t="m_title">Moderation</h1>
+    <div class="cols">
+      <section class="card">
+        <h2 data-t="m_slow">Langsam-Modus</h2>
+        <div class="chips" id="mSlow"></div>
+        <p class="hint" data-t="m_slow_hint"></p>
+        <h2 id="mFilterLbl" data-t="m_filter">Wortfilter</h2>
+        <p class="hint" data-t="m_filter_hint"></p>
+        <textarea id="mFilter" rows="8" aria-labelledby="mFilterLbl"></textarea>
+        <button type="button" class="btn" id="mFilterSave" data-t="m_save">Speichern</button>
+      </section>
+      <section class="card">
+        <h2 data-t="m_restricted">Stumm oder gesperrt</h2>
+        <div id="mRestricted" class="stack"></div>
+        <h2 data-t="m_log">Protokoll</h2>
+        <div class="tblwrap"><table class="tbl" id="mLog"></table></div>
+      </section>
+    </div>
   </main>
 
   <main id="viewKonto" class="konto" hidden>

@@ -1,5 +1,6 @@
 // MarbleArena-Website: Livebild (LSM-Embed), Runde im Takt, Mitspielen per Knopf, Chat, Anmeldung, Konto, Bestenliste.
 import { initBoard, loadBoard, renderBoard } from './board';
+import { moreClips, renderClips, renderClipStrip, renderMod, renderPlan, setMod } from './gemeinschaft';
 import { applyStatic, getLang, hasKey, setLang, t, type Key, type Lang } from './i18n';
 import { initRunde, onFeedback, onState, render as renderPlay, renderSide, setOnline, type RoundState } from './runde';
 
@@ -73,6 +74,10 @@ function renderLang(): void {
   void side();
   if (location.hash.startsWith('#konto')) void renderKonto();
   if (location.hash.startsWith('#bestenliste')) void renderBoard();
+  if (location.hash.startsWith('#spielplan')) void renderPlan();
+  if (location.hash.startsWith('#clip')) void renderClips(toast);
+  if (location.hash.startsWith('#mod')) void renderMod(toast);
+  setSlow(slowS);
 }
 document.querySelectorAll<HTMLButtonElement>('[data-lang]').forEach((b) =>
   b.addEventListener('click', () => {
@@ -254,22 +259,27 @@ function lineEl(l: Line): HTMLLIElement {
   n.textContent = l.name;
   if (l.color) n.style.color = l.color;
   li.append(n, ' ', l.text);
-  if (chatMe?.mod && l.src === 'web') {
+  // Mod-Werkzeuge: Seite-Zeilen löschen, stummschalten, sperren; Twitch-Zeilen nur auf der Seite ausblenden
+  if (chatMe?.mod && (l.src === 'web' || l.src === 'twitch')) {
     const tools = document.createElement('span');
     tools.className = 'tools';
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.textContent = '×';
-    del.title = t('del');
-    del.setAttribute('aria-label', t('del'));
-    del.onclick = () => ws?.send(JSON.stringify({ t: 'del', id: l.id }));
-    const mute = document.createElement('button');
-    mute.type = 'button';
-    mute.textContent = '10′';
-    mute.title = t('mute10');
-    mute.setAttribute('aria-label', t('mute10'));
-    mute.onclick = () => ws?.send(JSON.stringify({ t: 'mute', key: l.key, minutes: 10 }));
-    tools.append(del, mute);
+    const tool = (label: string, title: string, fn: () => void) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      b.title = title;
+      b.setAttribute('aria-label', `${title}: ${l.name}`);
+      b.onclick = fn;
+      tools.append(b);
+    };
+    tool('×', t('del'), () => ws?.send(JSON.stringify({ t: 'del', id: l.id })));
+    if (l.src === 'web' && !l.mod) {
+      tool('5′', t('mute5'), () => ws?.send(JSON.stringify({ t: 'mute', key: l.key, minutes: 5 })));
+      tool('1h', t('mute60'), () => ws?.send(JSON.stringify({ t: 'mute', key: l.key, minutes: 60 })));
+      tool('⊘', t('ban'), () => {
+        if (confirm(t('ban_q', { name: l.name }))) ws?.send(JSON.stringify({ t: 'mute', key: l.key, minutes: 100000 }));
+      });
+    }
     li.append(tools);
   }
   return li;
@@ -279,6 +289,18 @@ function addLine(l: Line): void {
   lines.append(lineEl(l));
   while (lines.children.length > 200) lines.firstElementChild?.remove();
   if (stick) lines.scrollTop = lines.scrollHeight;
+}
+let slowS = 0;
+function setSlow(n: number): void {
+  slowS = n;
+  const h = $('slowHint');
+  h.hidden = n <= 1;
+  h.textContent = n > 1 ? t('slow_on', { n }) : '';
+}
+function renderModNav(): void {
+  const mod = !!chatMe?.mod || !!me?.mod;
+  setMod(mod);
+  (document.querySelector('[data-view="mod"]') as HTMLElement).hidden = !mod;
 }
 let arenaOn = false;
 function renderArena(): void {
@@ -296,6 +318,8 @@ function connectChat(): void {
     const m = JSON.parse(String(ev.data));
     if (m.t === 'hello') {
       chatMe = m.me;
+      setSlow(Number(m.slow) || 0);
+      renderModNav();
       arenaOn = !!m.arena;
       renderArena();
       setOnline(arenaOn);
@@ -321,8 +345,14 @@ function connectChat(): void {
         void loadSchilling();
         reloadSoon();
       }
-    } else if (m.t === 'err') toast(errText(m.code), 'err');
+    } else if (m.t === 'err') toast(m.code === 'slow' && Number(m.wait) > 1 ? t('e_slow_n', { n: m.wait }) : errText(m.code), 'err');
     else if (m.t === 'sys' && m.code === 'muted') toast(t('muted_ok', { name: m.name, m: m.minutes }), 'ok');
+    else if (m.t === 'sys' && m.code === 'banned') toast(t('banned_ok', { name: m.name }), 'ok');
+    else if (m.t === 'slow') setSlow(Number(m.s) || 0);
+    else if (m.t === 'clip') {
+      if (!$('viewLive').hidden) void renderClipStrip(toast);
+      if (!$('viewClips').hidden) void renderClips(toast);
+    }
   };
   s.onclose = () => {
     if (ws !== s) return;
@@ -472,14 +502,22 @@ async function side(): Promise<void> {
 // ---------- Ansichten ----------
 function route(): void {
   const h = location.hash;
-  const view = h.startsWith('#konto') && me ? 'konto' : h.startsWith('#bestenliste') ? 'board' : 'live';
+  const isMod = !!chatMe?.mod || !!me?.mod;
+  const view = h.startsWith('#konto') && me ? 'konto' : h.startsWith('#bestenliste') ? 'board' : h.startsWith('#spielplan') ? 'plan' : h.startsWith('#clip') ? 'clips' : h.startsWith('#mod') && isMod ? 'mod' : 'live';
   $('viewLive').hidden = view !== 'live';
   $('viewKonto').hidden = view !== 'konto';
   $('viewBoard').hidden = view !== 'board';
+  $('viewPlan').hidden = view !== 'plan';
+  $('viewClips').hidden = view !== 'clips';
+  $('viewMod').hidden = view !== 'mod';
   const konto = view === 'konto';
   document.querySelectorAll<HTMLAnchorElement>('#nav a').forEach((a) => a.setAttribute('aria-current', String(a.dataset.view === view)));
   if (konto) void renderKonto();
   if (view === 'board') void renderBoard();
+  if (view === 'plan') void renderPlan();
+  if (view === 'clips') void renderClips(toast);
+  if (view === 'mod') void renderMod(toast);
+  if (view === 'live') void renderClipStrip(toast);
   if (h.startsWith('#willkommen') && me) openSetup();
   const err = h.match(/fehler=([a-z_]+)/)?.[1] ?? new URLSearchParams(location.search).get('fehler');
   if (err) {
@@ -509,6 +547,8 @@ async function start(): Promise<void> {
     login: () => (me?.setup ? openSetup() : openLogin()),
   });
   initBoard();
+  $('clipMore').addEventListener('click', () => void moreClips(toast));
+  renderModNav();
   renderLang();
   mountPlayer();
   connectChat();

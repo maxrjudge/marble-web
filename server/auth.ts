@@ -51,6 +51,8 @@ function freeName(db: DB, wanted: string): string {
 
 // einfache Bremse je Schlüssel (E-Mail, IP)
 const hits = new Map<string, number[]>();
+// Tests: Zähler leeren
+export const resetLimits = () => hits.clear();
 export function tooMany(key: string, max: number, windowMs: number): boolean {
   const t = now();
   const l = (hits.get(key) ?? []).filter((x) => t - x < windowMs);

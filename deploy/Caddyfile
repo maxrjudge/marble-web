@@ -3,6 +3,10 @@
 # Sicherheitskopfzeilen (CSP mit frame-src https://io.maxr.at, Referrer-Policy) setzt die Seite selbst.
 arena.maxr.at {
 	encode zstd gzip
+	# Clips der Arena kommen als Upload bis 80 MB
+	request_body {
+		max_size 100MB
+	}
 	reverse_proxy 127.0.0.1:5310
 	header {
 		Strict-Transport-Security "max-age=31536000"

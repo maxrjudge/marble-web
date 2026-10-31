@@ -22,6 +22,8 @@ export interface Config {
   baseUrl: string; // https://arena.maxr.at (ohne Schrägstrich am Ende)
   dbPath: string;
   publicDir: string;
+  clipsDir: string; // Clips der Arena (Videodateien)
+  clipsMax: number; // so viele behalten, ältere werden gelöscht
   lsmEmbedBase: string; // https://io.maxr.at/embed/live/
   lsmStreamKey: string;
   twitch: { clientId: string; clientSecret: string; channel: string };
@@ -39,6 +41,8 @@ export function loadConfig(over: Partial<Config> = {}): Config {
     baseUrl,
     dbPath: env('DB_PATH', 'marble-web.db'),
     publicDir: env('PUBLIC_DIR', 'dist/public'),
+    clipsDir: env('CLIPS_DIR', 'clips'),
+    clipsMax: Math.max(10, Number(env('CLIPS_MAX', '300')) || 300),
     lsmEmbedBase: env('LSM_EMBED_BASE', 'https://io.maxr.at/embed/live/'),
     lsmStreamKey: env('LSM_STREAM_KEY'),
     twitch: { clientId: env('TWITCH_CLIENT_ID'), clientSecret: env('TWITCH_CLIENT_SECRET'), channel: env('TWITCH_CHANNEL', 'marblearena').toLowerCase() },

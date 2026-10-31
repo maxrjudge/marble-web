@@ -93,6 +93,30 @@ export function openDb(path: string): DB {
       PRIMARY KEY (user_key, round)
     );
     CREATE INDEX IF NOT EXISTS history_at ON history(user_key, at);
+    -- Clips der Arena (Datei im Clip-Ordner)
+    CREATE TABLE IF NOT EXISTS clips (
+      file TEXT PRIMARY KEY,
+      at INTEGER NOT NULL,
+      kind TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL DEFAULT '',
+      track TEXT NOT NULL DEFAULT '',
+      round INTEGER,
+      dur REAL NOT NULL DEFAULT 0,
+      score REAL NOT NULL DEFAULT 0,
+      lang TEXT NOT NULL DEFAULT 'de',
+      size INTEGER NOT NULL DEFAULT 0,
+      hidden INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS clips_at ON clips(at);
+    -- was Mods getan haben (Protokoll)
+    CREATE TABLE IF NOT EXISTS mod_log (
+      id INTEGER PRIMARY KEY,
+      at INTEGER NOT NULL,
+      mod_name TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target TEXT NOT NULL DEFAULT '',
+      detail TEXT NOT NULL DEFAULT ''
+    );
   `);
   return db;
 }
@@ -116,4 +140,5 @@ export function housekeeping(db: DB): void {
   db.prepare('DELETE FROM magic WHERE expires < ?').run(t - 86400e3);
   db.prepare('DELETE FROM chat WHERE ts < ?').run(t - 30 * 86400e3);
   db.prepare('DELETE FROM history WHERE at < ?').run(t - 90 * 86400e3);
+  db.prepare('DELETE FROM mod_log WHERE at < ?').run(t - 90 * 86400e3);
 }

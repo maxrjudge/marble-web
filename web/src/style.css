@@ -217,3 +217,31 @@ dialog .x button { min-width: 44px; min-height: 44px; border: 0; background: tra
 }
 #bdTable th:first-child, #bdTable td:first-child { width: 64px; text-align: left; }
 #bdTable th:nth-child(2), #bdTable td:nth-child(2) { width: 50%; }
+
+/* Etappe 3: Clips, Spielplan, Mod */
+.konto.wide { max-width: 1440px; }
+.cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+.cgrid.small { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.clip { display: flex; flex-direction: column; gap: 8px; padding: 8px; border-radius: 14px; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.08); min-width: 0; }
+.cgrid.small .clip { padding: 0; background: none; border: 0; }
+.clip video { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 10px; background: #000; display: block; }
+.cgrid.small .clip video { aspect-ratio: 9 / 12; }
+.clip.hid { opacity: 0.6; }
+.clip.hid video { aspect-ratio: 9 / 4; }
+.clip.focus { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(246, 195, 67, 0.4); }
+.cmeta { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cmeta b { font-size: 14px; overflow-wrap: anywhere; }
+.cmeta .hint { font-size: 12px; }
+.phead a { margin-left: auto; font-size: 14px; }
+.pweek { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.pday.today { border-color: rgba(246, 195, 67, 0.5); }
+.pday.today h2 { color: var(--gold); }
+.pday .srow { grid-template-columns: 56px minmax(0, 1fr); }
+.pday .srow:first-child span:first-child { color: var(--dim); font-weight: 400; }
+textarea { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.16); background: var(--bg); color: var(--ink); resize: vertical; }
+.slowhint { color: #ffd38a; }
+#mLog td { font-size: 13px; }
+@media (max-width: 760px) {
+  .cgrid.small { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

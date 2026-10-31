@@ -2,7 +2,18 @@
 // gehen an die Arena und nicht in den Chat; die Antwort der Arena kommt nur beim Absender an. Brücke zu Twitch in
 // beide Richtungen (Twitch-Befehle zeigt die Seite nicht: die Arena liest sie ohnehin direkt bei Twitch).
 import { WebSocket } from 'ws';
-import { now, userKey, type DB, type User } from './db.js';
+import { kvGet, now, userKey, type DB, type User } from './db.js';
+
+// Mod-Aktion ins Protokoll
+export function modLog(db: DB, modName: string, action: string, target = '', detail = ''): void {
+  db.prepare('INSERT INTO mod_log (at, mod_name, action, target, detail) VALUES (?, ?, ?, ?, ?)').run(now(), modName, action, target, detail.slice(0, 200));
+}
+// Nutzer zu einem Schlüssel der Arena (twitch-login oder web:name)
+export function userByKey(db: DB, key: string): User | undefined {
+  return (key.startsWith('web:') ? db.prepare('SELECT * FROM users WHERE name = ? COLLATE NOCASE AND twitch_login IS NULL').get(key.slice(4)) : db.prepare('SELECT * FROM users WHERE twitch_login = ? COLLATE NOCASE').get(key)) as User | undefined;
+}
+// Langsam-Modus: so viele Sekunden zwischen zwei Zeilen (0 = aus, dann gilt eine je Sekunde)
+export const slowSeconds = (db: DB) => Math.max(0, Number(kvGet<number>(db, 'slow') ?? 0) || 0);
 
 export interface ChatLine {
   id: number;
@@ -81,6 +92,7 @@ export class ChatHub {
       history: this.history,
       arena: arenaOnline,
       state: this.state(),
+      slow: slowSeconds(this.db),
     });
     this.broadcast({ t: 'count', n: this.clients.size });
     ws.on('message', (raw) => {
@@ -157,8 +169,9 @@ export class ChatHub {
       if (!ok) this.send(c, { t: 'err', code: 'arena' });
       return;
     }
-    c.sent = c.sent.filter((x) => t - x < LIMITS.burstWindow);
-    if (!mod && (c.sent.length >= LIMITS.burst || (c.sent.length && t - c.sent[c.sent.length - 1] < 1000 / LIMITS.perSecond))) return this.send(c, { t: 'err', code: 'slow' });
+    c.sent = c.sent.filter((x) => t - x < Math.max(LIMITS.burstWindow, slowSeconds(this.db) * 1000));
+    const gap = Math.max(1000 / LIMITS.perSecond, slowSeconds(this.db) * 1000);
+    if (!mod && (c.sent.length >= LIMITS.burst || (c.sent.length && t - c.sent[c.sent.length - 1] < gap))) return this.send(c, { t: 'err', code: 'slow', wait: Math.ceil((gap - (t - (c.sent[c.sent.length - 1] ?? 0))) / 1000) });
     c.sent.push(t);
     if (!mod && LINK.test(text)) return this.send(c, { t: 'err', code: 'link' });
     if (this.blocked(text)) return this.send(c, { t: 'err', code: 'filter' });
@@ -186,20 +199,29 @@ export class ChatHub {
     this.add({ ts: now(), src, key: src, name, text: text.slice(0, 400), mod: false });
   }
 
+  // Zeile löschen (auch Twitch-Zeilen: die verschwinden nur auf der Seite)
   private del(c: Client, id: number): void {
-    if (!this.isMod(this.fresh(c))) return;
+    const m = this.fresh(c);
+    if (!this.isMod(m)) return;
+    const line = this.history.find((l) => l.id === id);
     this.db.prepare('UPDATE chat SET deleted = 1 WHERE id = ?').run(id);
     this.history = this.history.filter((l) => l.id !== id);
     this.broadcast({ t: 'del', id });
+    modLog(this.db, m!.name, 'del', line ? `${line.src === 'twitch' ? 'Twitch ' : ''}${line.name}` : `#${id}`, line?.text ?? '');
   }
+  // stummschalten (Minuten) oder sperren (minutes >= 100000)
   private mute(c: Client, key: string, minutes: number): void {
-    if (!this.isMod(this.fresh(c))) return;
-    const until = minutes >= 100000 ? 8.64e15 : now() + Math.min(100000, Math.max(1, minutes)) * 60e3;
-    const u = (key.startsWith('web:')
-      ? this.db.prepare('SELECT * FROM users WHERE name = ? COLLATE NOCASE').get(key.slice(4))
-      : this.db.prepare('SELECT * FROM users WHERE twitch_login = ? COLLATE NOCASE').get(key)) as User | undefined;
+    const m = this.fresh(c);
+    if (!this.isMod(m)) return;
+    const ban = minutes >= 100000;
+    const until = ban ? 0 : now() + Math.min(100000, Math.max(1, minutes)) * 60e3;
+    const u = userByKey(this.db, key);
     if (!u) return this.send(c, { t: 'err', code: 'nouser' });
-    this.db.prepare('UPDATE users SET muted_until = ? WHERE id = ?').run(until, u.id);
+    if (this.isMod(u)) return this.send(c, { t: 'err', code: 'ismod' });
+    if (ban) this.db.prepare('UPDATE users SET banned = 1 WHERE id = ?').run(u.id);
+    else this.db.prepare('UPDATE users SET muted_until = ? WHERE id = ?').run(until, u.id);
+    modLog(this.db, m!.name, ban ? 'ban' : 'mute', u.name, ban ? '' : `${minutes} min`);
+    for (const x of this.clients) if (x.user?.id === u.id) this.send(x, ban ? { t: 'err', code: 'banned' } : { t: 'err', code: 'muted', until });
     // was er zuletzt geschrieben hat, verschwindet
     const gone = this.history.filter((l) => l.key === key).map((l) => l.id);
     if (gone.length) {
@@ -207,6 +229,6 @@ export class ChatHub {
       this.history = this.history.filter((l) => l.key !== key);
       for (const id of gone) this.broadcast({ t: 'del', id });
     }
-    this.send(c, { t: 'sys', code: 'muted', name: u.name, minutes });
+    this.send(c, { t: 'sys', code: ban ? 'banned' : 'muted', name: u.name, minutes });
   }
 }
