@@ -12,6 +12,10 @@ Neue Fassung: `node scripts/version.mjs patch|minor|major`.
 
 ## Unveröffentlicht
 
+## 0.4.0 – 2026-11-03
+
+- Mod-Seite: „Kommentar im Chat“ zeigen/ausblenden – Ferdls und Resis Sätze erscheinen dann nicht mehr als Chat-Zeilen (im Stream hört man sie weiter), Meldungen der Arena bleiben; steht im Mod-Protokoll
+
 ## 0.3.5 – 2026-11-03
 
 - Beenden hängt nicht mehr: offene WebSockets werden vor dem Schließen getrennt, nach 3 s beendet sich der Dienst in jedem Fall (vorher bis 90 s und `SIGKILL`)

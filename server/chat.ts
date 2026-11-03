@@ -36,6 +36,7 @@ export interface Hooks {
   toArena: (m: ArenaChatMsg) => boolean; // false = Arena nicht verbunden
   toTwitch: (text: string) => boolean;
   bridgeOn: () => boolean;
+  ferdlOn?: () => boolean; // Kommentar (Ferdl, Resi) im Chat der Seite zeigen
 }
 
 // Chat: eine Zeile je Sekunde, 5 in 10 s. Befehle (Knöpfe) eigens: 8 in 10 s, damit Mitfahren, Wette und Banane
@@ -195,6 +196,7 @@ export class ChatHub {
   }
   // Ansagen (Ferdl) und Systemmeldungen aus der Arena
   fromArena(src: 'ferdl' | 'sys', text: string, who?: string): void {
+    if (src === 'ferdl' && this.hooks.ferdlOn && !this.hooks.ferdlOn()) return; // Kommentar im Chat abgeschaltet (Mod-Seite)
     const name = src === 'sys' ? 'Arena' : who === 'resi' ? 'Resi' : 'Ferdl';
     this.add({ ts: now(), src, key: src, name, text: text.slice(0, 400), mod: false });
   }

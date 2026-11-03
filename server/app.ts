@@ -17,7 +17,7 @@ import { boards, dropBoards, historyOf, levelFor, noteHistory, titlesFor, weekKe
 import { loadBot, saveBot, TwitchIrc, type Fetch } from './twitch.js';
 import { adminPage } from './admin.js';
 
-export const VERSION = '0.3.5';
+export const VERSION = '0.4.0';
 
 export interface AppOpts {
   mailer?: Transporter | null; // Tests: eigener Transport
@@ -55,7 +55,8 @@ export async function buildApp(c: Config, o: AppOpts = {}) {
 
   // --- Twitch-Chat ---
   let irc: TwitchIrc | null = null;
-  const hub = new ChatHub(db, { toArena, toTwitch: (t) => irc?.say(t) ?? false, bridgeOn });
+  const ferdlOn = () => kvGet<boolean>(db, 'ferdlChat') !== false;
+  const hub = new ChatHub(db, { toArena, toTwitch: (t) => irc?.say(t) ?? false, bridgeOn, ferdlOn });
   if (o.twitchIrcUrl !== null && c.twitch.channel) {
     irc = new TwitchIrc(c, db, (m) => hub.fromTwitch(m.login, m.name, m.text, m.mod, m.color, bridgeOn()), log, o.twitchIrcUrl ?? undefined, o.fetch);
     void irc.connect();
@@ -229,7 +230,16 @@ export async function buildApp(c: Config, o: AppOpts = {}) {
     const t = now();
     const restricted = (db.prepare('SELECT * FROM users WHERE banned = 1 OR muted_until > ? ORDER BY name').all(t) as User[]).map((u) => ({ key: userKey(u), name: u.name, banned: !!u.banned, until: u.banned ? null : u.muted_until }));
     const log = db.prepare('SELECT at, mod_name modName, action, target, detail FROM mod_log ORDER BY id DESC LIMIT 50').all();
-    return { slow: slowSeconds(db), filter: kvGet<string[]>(db, 'filter') ?? [], restricted, log };
+    return { slow: slowSeconds(db), ferdl: ferdlOn(), filter: kvGet<string[]>(db, 'filter') ?? [], restricted, log };
+  });
+  // Kommentar (Ferdl, Resi) im Chat der Seite an/aus; Meldungen der Arena bleiben
+  app.post('/api/mod/ferdl', async (req, reply) => {
+    const m = modOnly(req);
+    if (!m) return reply.code(403).send({ error: 'mod' });
+    const on = (req.body as { on?: boolean })?.on !== false;
+    kvSet(db, 'ferdlChat', on);
+    modLog(db, m.name, 'ferdl', '', on ? 'an' : 'aus');
+    return { ok: true, ferdl: on };
   });
   app.post('/api/mod/slow', async (req, reply) => {
     const m = modOnly(req);

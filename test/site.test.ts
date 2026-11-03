@@ -9,7 +9,7 @@ import nodemailer from 'nodemailer';
 import { WebSocket, WebSocketServer } from 'ws';
 import { buildApp } from '../server/app.ts';
 import { loadConfig } from '../server/config.ts';
-import { openDb } from '../server/db.ts';
+import { kvSet, openDb } from '../server/db.ts';
 import { parseIrc, saveBot } from '../server/twitch.ts';
 import { resetLimits } from '../server/auth.ts';
 
@@ -217,6 +217,13 @@ test('Chat: Nachricht an alle und über den Bot nach Twitch; Befehl an die Arena
   // Ferdl im Chat
   arena.ws.send(JSON.stringify({ type: 'ferdl', who: 'resi', text: 'Und los geht’s!' }));
   await b.waitFor((m) => m.t === 'msg' && (m.m as { src: string; name: string }).src === 'ferdl' && (m.m as { name: string }).name === 'Resi');
+  // Kommentar im Chat abgeschaltet (Mod-Seite): Ferdl fehlt, Meldungen der Arena bleiben
+  kvSet(site.db, 'ferdlChat', false);
+  arena.ws.send(JSON.stringify({ type: 'ferdl', text: 'Das sieht keiner im Chat' }));
+  arena.ws.send(JSON.stringify({ type: 'sys', text: 'Meldung der Arena' }));
+  await b.waitFor((m) => m.t === 'msg' && (m.m as { text: string }).text === 'Meldung der Arena');
+  assert.ok(!b.got.some((m) => m.t === 'msg' && (m.m as { text: string }).text === 'Das sieht keiner im Chat'), 'Kommentar ausgeblendet');
+  kvSet(site.db, 'ferdlChat', true);
   // eine zweite Arena ersetzt die erste
   const closed = new Promise<number>((r) => arena.ws.on('close', (code) => r(code)));
   const arena2 = wsClient(undefined, `/arena?token=${TOKEN}`);

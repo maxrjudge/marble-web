@@ -170,6 +170,7 @@ export async function renderClipStrip(toast: (s: string) => void): Promise<void>
 // ---------- Mod-Seite ----------
 interface ModData {
   slow: number;
+  ferdl: boolean;
   filter: string[];
   restricted: { key: string; name: string; banned: boolean; until: number | null }[];
   log: { at: number; modName: string; action: string; target: string; detail: string }[];
@@ -187,6 +188,17 @@ export async function renderMod(toast: (s: string, k?: 'ok' | 'err') => void): P
       b.setAttribute('aria-pressed', String(d.slow === n));
       b.onclick = async () => {
         if (await postJson('/api/mod/slow', { seconds: n })) void renderMod(toast);
+      };
+      return b;
+    }),
+  );
+  $('mFerdl').replaceChildren(
+    ...[true, false].map((on) => {
+      const b = el('button', 'chip-b', t(on ? 'm_ferdl_on' : 'm_ferdl_off')) as HTMLButtonElement;
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(d.ferdl === on));
+      b.onclick = async () => {
+        if (await postJson('/api/mod/ferdl', { on })) void renderMod(toast);
       };
       return b;
     }),
