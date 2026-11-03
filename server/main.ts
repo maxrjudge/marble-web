@@ -9,5 +9,7 @@ await app.listen({ port: c.port, host: c.host });
 console.log(`[marble-web] ${VERSION} läuft auf http://${c.host}:${c.port} (${c.baseUrl})`);
 for (const sig of ['SIGINT', 'SIGTERM'] as const)
   process.on(sig, () => {
+    // sauber schließen (Datenbank, Twitch); hängt eine Verbindung, nach 3 s trotzdem beenden
+    setTimeout(() => process.exit(0), 3000).unref();
     void app.close().then(() => process.exit(0));
   });

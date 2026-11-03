@@ -12,6 +12,10 @@ Neue Fassung: `node scripts/version.mjs patch|minor|major`.
 
 ## Unveröffentlicht
 
+## 0.3.5 – 2026-11-03
+
+- Beenden hängt nicht mehr: offene WebSockets werden vor dem Schließen getrennt, nach 3 s beendet sich der Dienst in jedem Fall (vorher bis 90 s und `SIGKILL`)
+
 ## 0.3.4 – 2026-11-03
 
 - `deploy/update.sh` holt den Stand mit `fetch` + `reset --hard origin/main` (scheiterte, weil `npm prune` die `package-lock.json` am Server umschreibt) und zieht die Dienst-Datei mit

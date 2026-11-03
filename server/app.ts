@@ -17,7 +17,7 @@ import { boards, dropBoards, historyOf, levelFor, noteHistory, titlesFor, weekKe
 import { loadBot, saveBot, TwitchIrc, type Fetch } from './twitch.js';
 import { adminPage } from './admin.js';
 
-export const VERSION = '0.3.4';
+export const VERSION = '0.3.5';
 
 export interface AppOpts {
   mailer?: Transporter | null; // Tests: eigener Transport
@@ -401,6 +401,10 @@ export async function buildApp(c: Config, o: AppOpts = {}) {
 
   const hk = setInterval(() => housekeeping(db), 3600e3);
   housekeeping(db);
+  // offene WebSockets zuerst trennen, sonst wartet das Beenden auf sie
+  app.addHook('preClose', async () => {
+    for (const ws of wss.clients) ws.terminate();
+  });
   app.addHook('onClose', async () => {
     clearInterval(hk);
     irc?.stop();
