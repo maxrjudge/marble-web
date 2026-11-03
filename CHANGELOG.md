@@ -12,6 +12,10 @@ Neue Fassung: `node scripts/version.mjs patch|minor|major`.
 
 ## Unveröffentlicht
 
+## 0.3.3 – 2026-11-03
+
+- Abgewiesene Arena-Verbindungen stehen im Log (`journalctl -u marble-web`): Schlüssel fehlt am Server oder passt nicht (mit Länge und Absender, nie der Schlüssel selbst)
+
 ## 0.3.2 – 2026-11-03
 
 - `deploy/update.sh`: `git pull` als root (mit dessen GitHub-Zugang), danach `chown` auf `marble-web`; so geht das Update aus dem GitHub-Repo wie bei HORDE

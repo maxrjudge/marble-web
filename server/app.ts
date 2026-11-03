@@ -17,7 +17,7 @@ import { boards, dropBoards, historyOf, levelFor, noteHistory, titlesFor, weekKe
 import { loadBot, saveBot, TwitchIrc, type Fetch } from './twitch.js';
 import { adminPage } from './admin.js';
 
-export const VERSION = '0.3.2';
+export const VERSION = '0.3.3';
 
 export interface AppOpts {
   mailer?: Transporter | null; // Tests: eigener Transport
@@ -349,7 +349,11 @@ export async function buildApp(c: Config, o: AppOpts = {}) {
       if (req.headers.origin && req.headers.origin !== originOf()) return socket.destroy();
       wss.handleUpgrade(req, socket, head, (ws) => hub.attach(ws, userFromCookieHeader(db, req.headers.cookie), !!arena));
     } else if (url.pathname === '/arena') {
-      if (!(c.arenaToken.length >= 16 && same(url.searchParams.get('token') ?? '', c.arenaToken))) return socket.destroy();
+      if (!(c.arenaToken.length >= 16 && same(url.searchParams.get('token') ?? '', c.arenaToken))) {
+        // im Log sichtbar machen, warum die Arena nicht hereinkommt (ohne den Schlüssel selbst)
+        log(c.arenaToken.length < 16 ? 'Arena abgewiesen: ARENA_TOKEN am Server fehlt oder ist kürzer als 16 Zeichen' : `Arena abgewiesen: falscher Schlüssel (&seitentoken=…, ${(url.searchParams.get('token') ?? '').length} Zeichen) von ${req.headers['x-forwarded-for'] ?? req.socket.remoteAddress}`);
+        return socket.destroy();
+      }
       wss.handleUpgrade(req, socket, head, (ws) => {
         // die neueste Verbindung gilt (Neustart der Arena)
         if (arena && arena !== ws) arena.close(4000, 'ersetzt');
