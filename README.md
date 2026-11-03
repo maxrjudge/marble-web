@@ -52,7 +52,7 @@ journalctl -u marble-web -n 20     # zeigt, was in den Einstellungen noch fehlt
 systemctl reload caddy
 ```
 
-Update später (im Ordner `/opt/marble-web`, Datenbank bleibt):
+Der Code liegt im privaten GitHub-Repo `maxrjudge/marble-web` (Zweig `main`), Neues wird dorthin gepusht. Erstes Einrichten mit `git clone git@github.com:maxrjudge/marble-web.git /opt/marble-web` (bzw. HTTPS, wie bei HORDE). Update später (im Ordner `/opt/marble-web`, als root, holt den Stand aus GitHub, baut, startet neu, Datenbank bleibt):
 
 ```bash
 sudo deploy/update.sh
