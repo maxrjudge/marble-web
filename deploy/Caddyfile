@@ -12,10 +12,7 @@ arena.maxr.at {
 		Strict-Transport-Security "max-age=31536000"
 		-Server
 	}
-	log {
-		output file /var/log/caddy/arena.maxr.at.log {
-			roll_size 10MiB
-			roll_keep 5
-		}
-	}
+	# Zugriffe ins Journal (journalctl -u caddy). Keine eigene Logdatei: legt `caddy validate` als root sie an,
+	# gehört sie root und der Dienst (Benutzer caddy) kann sie beim Reload nicht öffnen
+	log
 }

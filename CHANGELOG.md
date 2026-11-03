@@ -12,6 +12,10 @@ Neue Fassung: `node scripts/version.mjs patch|minor|major`.
 
 ## Unveröffentlicht
 
+## 0.3.1 – 2026-11-03
+
+- Caddy-Block ohne eigene Logdatei (Zugriffe ins Journal): nach `caddy validate` als root gehörte `/var/log/caddy/arena.maxr.at.log` root, der Reload scheiterte mit „permission denied“
+
 ## 0.3.0 – 2026-10-31
 
 - Etappe 3: Clips – die Arena lädt jeden Auto-Clip auf die Seite hoch (`/arena-api/clip`, MP4 oder WebM bis 80 MB); Seite „Clips“ mit allen Clips (Hochformat, abspielbar, „Link kopieren“ auf genau diesen Clip, „Mehr laden“), die neuesten vier unter dem Livebild; behalten werden die neuesten 300 (`CLIPS_MAX`), Ordner `CLIPS_DIR`
