@@ -12,6 +12,10 @@ Neue Fassung: `node scripts/version.mjs patch|minor|major`.
 
 ## Unveröffentlicht
 
+## 0.3.2 – 2026-11-03
+
+- `deploy/update.sh`: `git pull` als root (mit dessen GitHub-Zugang), danach `chown` auf `marble-web`; so geht das Update aus dem GitHub-Repo wie bei HORDE
+
 ## 0.3.1 – 2026-11-03
 
 - Caddy-Block ohne eigene Logdatei (Zugriffe ins Journal): nach `caddy validate` als root gehörte `/var/log/caddy/arena.maxr.at.log` root, der Reload scheiterte mit „permission denied“

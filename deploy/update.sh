@@ -3,7 +3,9 @@
 # Holt den Stand aus git (oder nimmt den ausgepackten Quellcode), baut und startet neu. Datenbank bleibt.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-if [ -d .git ]; then sudo -u marble-web git pull --ff-only; fi
+# git pull als root (der hat den GitHub-Zugang), danach gehört wieder alles dem Dienst-Benutzer
+if [ -d .git ]; then git -c safe.directory="$PWD" pull --ff-only; fi
+chown -R marble-web:marble-web .
 sudo -u marble-web npm ci --no-audit --no-fund
 sudo -u marble-web npm run build
 sudo -u marble-web npm prune --omit=dev --no-audit --no-fund
