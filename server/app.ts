@@ -17,7 +17,7 @@ import { boards, dropBoards, historyOf, levelFor, noteHistory, titlesFor, weekKe
 import { loadBot, saveBot, TwitchIrc, type Fetch } from './twitch.js';
 import { adminPage } from './admin.js';
 
-export const VERSION = '0.3.3';
+export const VERSION = '0.3.4';
 
 export interface AppOpts {
   mailer?: Transporter | null; // Tests: eigener Transport

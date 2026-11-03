@@ -16,6 +16,8 @@ EnvironmentFile=/etc/marble-web.env
 ExecStart=/usr/bin/node dist/server/main.js
 Restart=always
 RestartSec=3
+# offene WebSockets halten das Beenden sonst bis zu 90 s auf
+TimeoutStopSec=10
 
 # Schutz: nur die Datenbank unter /var/lib/marble-web ist beschreibbar
 StateDirectory=marble-web

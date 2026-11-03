@@ -12,6 +12,11 @@ Neue Fassung: `node scripts/version.mjs patch|minor|major`.
 
 ## Unveröffentlicht
 
+## 0.3.4 – 2026-11-03
+
+- `deploy/update.sh` holt den Stand mit `fetch` + `reset --hard origin/main` (scheiterte, weil `npm prune` die `package-lock.json` am Server umschreibt) und zieht die Dienst-Datei mit
+- Dienst beendet sich nach höchstens 10 s (`TimeoutStopSec`), statt 90 s auf offene WebSockets zu warten
+
 ## 0.3.3 – 2026-11-03
 
 - Abgewiesene Arena-Verbindungen stehen im Log (`journalctl -u marble-web`): Schlüssel fehlt am Server oder passt nicht (mit Länge und Absender, nie der Schlüssel selbst)
